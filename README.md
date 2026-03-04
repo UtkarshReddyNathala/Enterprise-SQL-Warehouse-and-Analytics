@@ -35,36 +35,50 @@ The data architecture for this project follows Medallion Architecture **Bronze**
 ## Project Structure
 
 ```
+
 Enterprise-Data-Warehouse/
 │
-├── datasets/                      # Source CSV files (CRM & ERP)
+├── datasets/                         # Source CSV files (CRM & ERP extracts)
 │
-├── docs/                          # Architecture diagrams & documentation
+├── docs/                             # Documentation & Architecture
+│   ├── data_architecture.png
+│   ├── data_flow.png
+│   ├── data_integration.png
+│   ├── data_model.png
+│   ├── data_catalog.md
+│   └── naming_conventions.md
 │
-├── scripts/
-│   ├── audit/                     # Audit schema objects
+├── scripts/                          # Core SQL Implementation
+│   │
+│   ├── audit/                        # Audit & ETL control framework
 │   │   ├── ddl_audit.sql
 │   │   └── seed_etl_config.sql
 │   │
-│   ├── bronze/                    # Bronze layer (Raw data load)
+│   ├── bronze/                       # Bronze layer (Raw ingestion)
 │   │   ├── ddl_bronze.sql
 │   │   └── proc_load_bronze.sql
 │   │
-│   ├── silver/                    # Silver layer (Cleaning & transformation)
+│   ├── silver/                       # Silver layer (Cleaning & transformation)
 │   │   ├── ddl_silver.sql
 │   │   └── proc_load_silver.sql
 │   │
-│   ├── gold/                      # Gold layer (Star schema & reporting)
+│   ├── gold/                         # Gold layer (Star schema & reporting)
 │   │   ├── ddl_gold.sql
 │   │   └── proc_load_gold.sql
 │   │
-│   ├── init_database.sql          # Database initialization
-│   └── init_load_all.sql          # Master ETL procedure
+│   ├── security/                     # Security & Access Control (RBAC)
+│   │   └── ddl_security.sql
+│   │
+│   ├── init_database.sql             # Database initialization
+│   └── init_load_all.sql             # Master ETL orchestration
 │
-├── tests/                         # Validation & test scripts
+├── Data Analytics/                   # Analytical SQL scripts (reports & insights)
+│
+├── tests/                            # Validation & test scripts
 │
 ├── .gitignore
 └── README.md
+
 ```
 
 ### Data Model
