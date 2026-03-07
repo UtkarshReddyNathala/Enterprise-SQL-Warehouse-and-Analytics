@@ -13,6 +13,21 @@ The system performs **ETL (Extract, Transform, Load)**, applies Data Cleaning an
 
 ---
 
+## Problems Solved
+
+- **Fragmented data from multiple business systems:** Integrated CRM and ERP datasets into a centralized SQL data warehouse.
+
+- **Poor data quality in raw operational data:** Implemented data cleaning, validation checks, and standardization during Silver layer transformations.
+
+- **Difficulty tracking data changes and history:** Applied SCD Type-1 and Type-2 techniques to manage updates and maintain historical records.
+
+- **Inefficient full data reloads:** Implemented incremental loading using a watermark framework and change detection with HASHBYTES.
+
+- **Lack of governance and monitoring in ETL pipelines:** Built an audit framework to track ETL runs, detect data quality issues, and log pipeline execution.
+
+- **Slow analytical queries on transactional data:** Designed a star schema with partitioning and columnstore indexing for faster analytics.
+
+ --- 
 
 ### Core Capabilities
 
