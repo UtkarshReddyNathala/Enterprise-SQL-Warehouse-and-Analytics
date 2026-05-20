@@ -3,7 +3,7 @@
 ### Medallion Architecture | Metadata-Driven ETL | Slowly Changing Dimensions 1 and 2 | Change Data Capture | Data Governance | Star Schema
 ---  
   
-## Overview
+## Overview 
 
 This project is an end-to-end **Data Warehouse solution** built using **Microsoft SQL Server**.
 
