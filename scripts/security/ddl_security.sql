@@ -27,7 +27,7 @@ GO
 
 
 ---------------------------------------------------------------
--- User Country Mapping (Used for RLS)
+-- User Country Mapping (Used for Row-Level Security)
 ---------------------------------------------------------------
 IF OBJECT_ID('Security.UserCountryMapping', 'U') IS NOT NULL
     DROP TABLE Security.UserCountryMapping;
@@ -37,7 +37,7 @@ CREATE TABLE Security.UserCountryMapping
 (
     UserName SYSNAME NOT NULL,
     Country  NVARCHAR(50) NOT NULL,
-    CONSTRAINT PK_UserCountryMapping 
+    CONSTRAINT PK_UserCountryMapping
         PRIMARY KEY (UserName, Country)
 );
 GO
@@ -48,10 +48,10 @@ GO
 
 
 ---------------------------------------------------------------
--- Sample Access Mapping (Demo Users)
+-- Sample User Access Mapping
 ---------------------------------------------------------------
 INSERT INTO Security.UserCountryMapping (UserName, Country)
-VALUES 
+VALUES
 ('IndiaUser', 'India'),
 ('USUser', 'United States'),
 ('GlobalManager', 'India'),
@@ -85,13 +85,13 @@ GO
 ---------------------------------------------------------------
 -- Apply Security Policy to Fact Table
 ---------------------------------------------------------------
-IF EXISTS (SELECT 1 FROM sys.security_policies 
+IF EXISTS (SELECT 1 FROM sys.security_policies
            WHERE name = 'FactSalesCountryPolicy')
     DROP SECURITY POLICY Security.FactSalesCountryPolicy;
 GO
 
 CREATE SECURITY POLICY Security.FactSalesCountryPolicy
-ADD FILTER PREDICATE 
+ADD FILTER PREDICATE
     Security.fn_FilterFactSalesByCountry(customer_key)
 ON gold.fact_sales
 WITH (STATE = ON);
@@ -103,11 +103,11 @@ GO
 ---------------------------------------------------------------
 BEGIN TRY
     ALTER TABLE gold.fact_sales
-    ALTER COLUMN sales_amount 
+    ALTER COLUMN sales_amount
     ADD MASKED WITH (FUNCTION = 'default()');
 END TRY
 BEGIN CATCH
-    -- Ignore if already masked
+    -- Ignore if the column is already masked
 END CATCH;
 GO
 
@@ -115,15 +115,15 @@ GO
 ---------------------------------------------------------------
 -- Sensitivity Classification
 ---------------------------------------------------------------
-ADD SENSITIVITY CLASSIFICATION 
+ADD SENSITIVITY CLASSIFICATION
 TO gold.dim_customers.first_name
 WITH (LABEL = 'Confidential', INFORMATION_TYPE = 'Personal Data');
 
-ADD SENSITIVITY CLASSIFICATION 
+ADD SENSITIVITY CLASSIFICATION
 TO gold.dim_customers.last_name
 WITH (LABEL = 'Confidential', INFORMATION_TYPE = 'Personal Data');
 
-ADD SENSITIVITY CLASSIFICATION 
+ADD SENSITIVITY CLASSIFICATION
 TO gold.dim_customers.birthdate
 WITH (LABEL = 'Sensitive', INFORMATION_TYPE = 'Personal Data');
 GO
@@ -164,11 +164,11 @@ GO
 
 
 ---------------------------------------------------------------
--- Audit Specification (Tracks SELECT on Gold Schema)
+-- Audit Specification (Track SELECT operations on Gold schema)
 ---------------------------------------------------------------
 IF NOT EXISTS (
-    SELECT 1 
-    FROM sys.database_audit_specifications 
+    SELECT 1
+    FROM sys.database_audit_specifications
     WHERE name = 'GoldAuditSpec'
 )
 BEGIN
