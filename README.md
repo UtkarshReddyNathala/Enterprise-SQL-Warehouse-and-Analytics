@@ -6,7 +6,9 @@
 
 ## Overview
 
-This project is an end-to-end **Enterprise Data Warehouse** built using **Microsoft SQL Server**. It integrates data from multiple **CRM and ERP source systems (CSV extracts)** into a centralized analytical warehouse using a layered **Medallion Architecture (Bronze → Silver → Gold)**.
+This project is an end-to-end Data Warehouse solution built using Microsoft SQL Server.The system performs ETL (Extract, Transform, Load).
+
+Data is extracted from CRM and ERP source systems (CSV extracts), processing 116K+ records across 6 source systems, and transformed through a structured Medallion architecture (Bronze → Silver → Gold) using Stored Procedures..
 
 The solution implements a production-oriented ETL framework with **metadata-driven ingestion**, **incremental loading**, **Change Data Capture (CDC)**, **Slowly Changing Dimensions (SCD Type 1 & Type 2)**, **data quality validation**, and **comprehensive audit logging**. The curated data is modeled into a **Star Schema** to support reporting, business intelligence, and analytical workloads.
 
