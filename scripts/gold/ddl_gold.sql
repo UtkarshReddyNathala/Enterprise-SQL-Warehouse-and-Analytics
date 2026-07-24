@@ -1,19 +1,15 @@
-gold ddl
 /*
 ===============================================================================
 DDL Script: Create Gold Tables with Partitioning
 ===============================================================================
 Script Purpose:
-    This script creates the physical tables for the Gold layer in the 
-    data warehouse. The Gold layer represents the final dimension and 
-    fact tables arranged in a Star Schema.
-
-    Each table is designed to store clean, enriched, and business-ready 
-    datasets processed from the Silver layer.
+    This script creates the tables for the Gold layer in the
+    data warehouse. The Gold layer contains the dimension and
+    fact tables organized in a Star Schema.
 
 Usage:
     - These tables are populated via the 'gold.load_gold' stored procedure.
-    - These tables should be queried directly for analytics and reporting.
+    - These tables are used for analytics and reporting.
 ===============================================================================
 */
 
@@ -144,5 +140,3 @@ GO
 PRINT '------------------------------------------------';
 PRINT 'Gold Layer Tables Created Successfully with FKs, Indexes, and Partitioning';
 PRINT '------------------------------------------------';
-
-
