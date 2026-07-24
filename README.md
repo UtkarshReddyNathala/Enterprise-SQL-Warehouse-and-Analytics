@@ -584,4 +584,32 @@ init.load_all
 
 The orchestration procedure provides a fully automated end-to-end ETL workflow while ensuring auditability, reliability, and recoverability.
 
+# How to Run
+
+1. Execute `scripts/init_database.sql`
+2. Deploy the audit framework.
+3. Deploy Bronze, Silver, and Gold DDL scripts.
+4. Deploy all ETL stored procedures.
+5. Run:
+
+```sql
+EXEC init.load_all;
+```
+
+6. Monitor execution using:
+
+```
+scripts/monitoring/etl_monitoring_dashboard.sql
+```
+
+---
+
+# Author
+
+**Utkarsh Reddy Nathala**
+
+LinkedIn: https://www.linkedin.com/in/utkarshreddynathala/
+
+Email: utkarshnathala@gmail.com
+
 ---
