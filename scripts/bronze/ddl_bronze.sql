@@ -2,10 +2,12 @@
 ===============================================================================
 DDL Script: Create Bronze Tables
 ===============================================================================
-Script Purpose:
-    This script creates tables in the 'bronze' schema, dropping existing tables 
-    if they already exist.
-    Run this script to re-define the DDL structure of 'bronze' Tables
+
+Purpose:
+- Create the Bronze layer tables.
+- Recreate the table structure by dropping existing tables if they exist.
+- Define the landing zone for raw CRM and ERP source data.
+
 ===============================================================================
 */
 
@@ -50,9 +52,9 @@ CREATE TABLE bronze.crm_sales_details (
     sls_order_dt INT,
     sls_ship_dt  INT,
     sls_due_dt   INT,
-    sls_sales    MONEY, -- Changed from INT to MONEY for precision
+    sls_sales    MONEY, -- Sales amount
     sls_quantity INT,
-    sls_price    MONEY  -- Changed from INT to MONEY for precision
+    sls_price    MONEY  -- Unit price
 );
 GO
 
