@@ -6,13 +6,11 @@
 
 ## Overview
 
-This project is an end-to-end Data Warehouse solution built using Microsoft SQL Server.The system performs ETL (Extract, Transform, Load).
+This project is an end-to-end **Data Warehouse solution** built using **Microsoft SQL Server**. Data is extracted from **CRM and ERP source systems (CSV extracts)**, processing **116K+ records across 6 source systems**, and transformed through a structured **Medallion architecture (Bronze → Silver → Gold)** using **Stored Procedures**.
 
-Data is extracted from CRM and ERP source systems (CSV extracts), processing 116K+ records across 6 source systems, and transformed through a structured Medallion architecture (Bronze → Silver → Gold) using Stored Procedures..
+The solution implements a production-oriented **ETL framework** with **metadata-driven ingestion**, **incremental loading**, **Change Data Capture (CDC)**, **Slowly Changing Dimensions (SCD Type 1 & Type 2)**, **data quality validation**, and **comprehensive audit logging**. The curated data is modeled into a **Star Schema** to support **reporting, business intelligence, and analytical workloads**.
 
-The solution implements a production-oriented ETL framework with **metadata-driven ingestion**, **incremental loading**, **Change Data Capture (CDC)**, **Slowly Changing Dimensions (SCD Type 1 & Type 2)**, **data quality validation**, and **comprehensive audit logging**. The curated data is modeled into a **Star Schema** to support reporting, business intelligence, and analytical workloads.
-
-To improve maintainability and operational visibility, the project includes configurable ETL pipelines, execution logging, data quality monitoring, reject-record handling, and centralized audit tables that enable reliable and traceable data processing.
+To improve **maintainability and operational visibility**, the project includes **configurable ETL pipelines**, **execution logging**, **data quality monitoring**, **reject-record handling**, and **centralized audit tables** that enable **reliable and traceable data processing**.
 
 ---
 
