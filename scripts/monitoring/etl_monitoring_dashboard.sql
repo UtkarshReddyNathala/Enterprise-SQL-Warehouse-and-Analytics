@@ -3,16 +3,14 @@
 ETL Monitoring Dashboard
 ===============================================================================
 Script Purpose:
-    Priority 1, Upgrade 4 - ETL Dashboard Query.
+    This script provides a dashboard to monitor ETL pipeline execution.
 
-    A read-only SQL dashboard for monitoring pipeline health. Point a BI tool
-    at these queries, or run them directly, for a snapshot of the most recent
-    ETL run: Last Load, Status, Rows Loaded, Execution Time, Failed Loads,
-    and Rejected Records.
+    Run these queries to view the latest ETL run, including load status,
+    rows processed, execution time, failed loads, and data quality issues.
 
 Usage Notes:
     - Run after init.load_all has completed at least once.
-    - Each section is independent and can be run on its own.
+    - Each section can be executed independently.
 ===============================================================================
 */
 
@@ -100,7 +98,7 @@ SELECT
     check_name          AS rule_name,
     failed_rows,
     check_layer          AS layer,
-    check_date            AS execution_time
+    check_date           AS execution_time
 FROM audit.data_quality_issues
 WHERE batch_id = (SELECT MAX(log_id) FROM audit.etl_log WHERE table_name = 'MASTER_PIPELINE')
 ORDER BY check_date;
