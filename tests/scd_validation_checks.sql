@@ -3,15 +3,15 @@
 SCD Type 2 Validation Checks (silver.crm_prd_info)
 ===============================================================================
 Script Purpose:
-    Priority 2, Upgrade 5 - Slowly Changing Dimension Validation.
+    This script validates the SCD Type 2 implementation for
+    silver.crm_prd_info.
 
-    silver.crm_prd_info implements SCD Type 2 history tracking (effective_date,
-    expiry_date, is_current). This script validates that the history logic is
-    behaving correctly.
+    The checks verify that historical records are maintained correctly
+    using effective_date, expiry_date, and is_current.
 
 Usage Notes:
     - Run after silver.load_silver.
-    - Every query below should return NO rows. Any result is a defect.
+    - Every query below should return NO rows. Any result indicates an issue.
 ===============================================================================
 */
 
@@ -40,8 +40,7 @@ WHERE expiry_date IS NOT NULL
   AND expiry_date <= effective_date;
 
 -- ====================================================================
--- 3. No Overlapping History between consecutive versions of the same product
---    (One version's Expiry Date must not run past the next version's Start Date)
+-- 3. No overlapping history between consecutive versions of the same product
 -- Expectation: No Results
 -- ====================================================================
 SELECT 
