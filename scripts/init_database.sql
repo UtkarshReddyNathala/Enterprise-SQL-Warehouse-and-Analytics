@@ -1,14 +1,14 @@
 /*
 =============================================================
-Create Database and Schemas (Corrected)
+Create Database and Schemas
 =============================================================
 Script Purpose:
-This script creates the 'DataWarehouse' database and initializes 
-all five required schemas to support the Audit and Master Pipeline framework.
+This script creates the 'DataWarehouse' database and initializes
+the required schemas used by the data warehouse.
 
 WARNING:
-Running this script will drop the entire 'DataWarehouse' database if it exists.
-Proceed with caution.
+Running this script will drop the existing 'DataWarehouse' database,
+if it already exists. Proceed with caution.
 */
 
 USE master;
@@ -33,7 +33,7 @@ GO
 -- Create Schemas
 -- =============================================================
 
--- Layer Schemas (Data Storage)
+-- Data Layer Schemas
 CREATE SCHEMA bronze;
 GO
 
@@ -43,13 +43,13 @@ GO
 CREATE SCHEMA gold;
 GO
 
--- Management Schemas (Framework & Logging)
-CREATE SCHEMA audit; -- NEW: Required for etl_log, etl_config, etc.
+-- Supporting Schemas
+CREATE SCHEMA audit; -- Stores audit logs and configuration tables
 GO
 
-CREATE SCHEMA init;  -- NEW: Required for the Master Load Procedure
+CREATE SCHEMA init;  -- Stores initialization and master load procedures
 GO
 
 PRINT '------------------------------------------------';
-PRINT 'Database and All Schemas (5) Created Successfully';
+PRINT 'Database and Schemas Created Successfully';
 PRINT '------------------------------------------------';
