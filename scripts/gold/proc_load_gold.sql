@@ -7,15 +7,15 @@ Script Purpose:
     schema tables from the 'silver' schema.
 
 Features:
-    - Level 4 Audit: Now tracks @batch_id for all table loads and DQ issues.
+    - Tracks @batch_id for table loads and data quality issues.
     - Full Load strategy for Star Schema.
     - Integration of business logic and transformations.
     - Persistent Audit Logging (audit.etl_log).
     - Data Quality Layer (audit.data_quality_issues).
-    - NEW: Step-level execution logging via audit.etl_execution_log.
-    - NEW: Before/after row counts logged to audit.table_statistics.
-    - NEW: Runs the extended data quality rule set (audit.usp_run_data_quality_checks)
-           once the star schema is fully populated.
+    - Step-level execution logging via audit.etl_execution_log.
+    - Logs before/after row counts in audit.table_statistics.
+    - Runs the data quality checks (audit.usp_run_data_quality_checks)
+      after loading the star schema.
 ===============================================================================
 */
 
@@ -23,11 +23,11 @@ CREATE OR ALTER PROCEDURE gold.load_gold @batch_id INT = NULL AS
 BEGIN
     DECLARE @start_time DATETIME, @end_time DATETIME, @batch_start_time DATETIME, @batch_end_time DATETIME;
     DECLARE @rows_inserted INT;
-    DECLARE @rows_before INT;      -- NEW: Row count captured before this table's load
+    DECLARE @rows_before INT;      -- Row count before loading the table
     DECLARE @dq_errors INT;
-    DECLARE @total_inserted BIGINT = 0; -- NEW: Running total for execution log
+    DECLARE @total_inserted BIGINT = 0; -- Total rows inserted during execution
 
-    -- NEW: Open a step-level execution record (Upgrade 1: ETL Execution Logging)
+    -- Open execution log for this procedure
     DECLARE @execution_id INT;
     EXEC audit.usp_execution_start
         @procedure_name = 'gold.load_gold',
@@ -49,8 +49,8 @@ BEGIN
         SELECT @rows_before = COUNT(*) FROM gold.dim_customers;
         PRINT '------------------------------------------------';
         PRINT '>> Cleaning Table: gold.dim_customers (Preserving -1)';
-        -- Change: Swapped TRUNCATE for DELETE to keep the 'Unknown' member
-        DELETE FROM gold.dim_customers WHERE customer_key <> -1; 
+        -- Use DELETE to preserve the 'Unknown' member
+        DELETE FROM gold.dim_customers WHERE customer_key <> -1;
         PRINT '>> Inserting Data Into: gold.dim_customers';
 
         INSERT INTO gold.dim_customers (
@@ -106,7 +106,7 @@ BEGIN
         SELECT @rows_before = COUNT(*) FROM gold.dim_products;
         PRINT '------------------------------------------------';
         PRINT '>> Cleaning Table: gold.dim_products (Preserving -1)';
-        -- Change: Swapped TRUNCATE for DELETE to keep the 'Unknown' member
+        -- Use DELETE to preserve the 'Unknown' member
         DELETE FROM gold.dim_products WHERE product_key <> -1;
         PRINT '>> Inserting Data Into: gold.dim_products';
 
@@ -134,10 +134,10 @@ BEGIN
             pc.maintenance,
             pn.prd_cost,
             pn.prd_line,
-            pn.effective_date -- Updated to reflect silver column name
+            pn.effective_date -- Start date from the Silver layer
         FROM silver.crm_prd_info pn
         LEFT JOIN silver.erp_px_cat_g1v2 pc ON pn.cat_id = pc.id
-        WHERE pn.is_current = 1; -- Filter only current version for Gold Dim
+        WHERE pn.is_current = 1; -- Load only the current product records
 
         SET @rows_inserted = @@ROWCOUNT;
         SET @end_time = GETDATE();
@@ -180,9 +180,9 @@ BEGIN
             sd.sls_quantity AS quantity,
             sd.sls_price AS price
         FROM silver.crm_sales_details sd
-        -- Change: Added SUBSTRING to clean product key to match dim_products.product_number format
+        -- Match product key format with dim_products
         LEFT JOIN gold.dim_products pr ON SUBSTRING(sd.sls_prd_key, 7, LEN(sd.sls_prd_key)) = pr.product_number
-        -- Change: Added CAST to ensure sls_cust_id matches the INT format of dim_customers
+        -- Match customer ID data type
         LEFT JOIN gold.dim_customers cu ON CAST(sd.sls_cust_id AS INT) = cu.customer_id;
 
         SET @rows_inserted = @@ROWCOUNT;
@@ -202,7 +202,7 @@ BEGIN
         PRINT '>> -------------';
 
         -- ======================================================
-        -- NEW: Extended Data Quality Framework (Priority 1, #2)
+        -- Run Data Quality Checks
         -- ======================================================
         EXEC audit.usp_run_data_quality_checks @batch_id = @batch_id;
 
@@ -212,7 +212,7 @@ BEGIN
         PRINT ' - Total Load Duration: ' + CAST(DATEDIFF(SECOND, @batch_start_time, @batch_end_time) AS NVARCHAR) + ' seconds';
         PRINT '==========================================';
 
-        -- NEW: Close the step-level execution record as a success
+        -- Mark execution as successful
         EXEC audit.usp_execution_end
             @execution_id  = @execution_id,
             @rows_inserted = @total_inserted,
@@ -228,7 +228,7 @@ BEGIN
         PRINT 'Error Message: ' + ERROR_MESSAGE();
         PRINT '=========================================='
 
-        -- NEW: Close the step-level execution record as a failure
+        -- Mark execution as failed
         EXEC audit.usp_execution_end
             @execution_id  = @execution_id,
             @rows_inserted = @total_inserted,
