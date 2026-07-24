@@ -1,26 +1,34 @@
 /*
 ===============================================================================
-Stored Procedures: Execution Logging Helpers (audit.etl_execution_log)
+Stored Procedures: ETL Execution Logging
 ===============================================================================
-Script Purpose:
-    Priority 1, Upgrade 1 - ETL Execution Logging.
 
-    Centralized, reusable helpers so every stored procedure in the pipeline
-    (Bronze / Silver / Gold / Master) writes exactly one row into
-    audit.etl_execution_log per run - the step-level monitoring layer that
-    sits on top of the existing table-level audit.etl_log.
+Purpose:
+- Record the start and end of stored procedure execution.
+- Maintain step-level execution details for the ETL pipeline.
+- Provide reusable logging procedures across Bronze, Silver, Gold, and Master layers.
 
-    - audit.usp_execution_start : Opens a new execution record, returns ExecutionID
-    - audit.usp_execution_end   : Closes the execution record with final stats
+Stored Procedures:
+- audit.usp_execution_start
+- audit.usp_execution_end
 
-Usage Example:
-    DECLARE @exec_id INT;
-    EXEC audit.usp_execution_start @procedure_name = 'bronze.load_bronze',
-                                    @layer = 'Bronze', @batch_id = 1,
-                                    @execution_id = @exec_id OUTPUT;
-    ...
-    EXEC audit.usp_execution_end @execution_id = @exec_id,
-                                  @rows_inserted = 24500, @status = 'SUCCESS';
+Example:
+
+DECLARE @exec_id INT;
+
+EXEC audit.usp_execution_start
+    @procedure_name = 'bronze.load_bronze',
+    @layer = 'Bronze',
+    @batch_id = 1,
+    @execution_id = @exec_id OUTPUT;
+
+...
+
+EXEC audit.usp_execution_end
+    @execution_id = @exec_id,
+    @rows_inserted = 24500,
+    @status = 'SUCCESS';
+
 ===============================================================================
 */
 
@@ -32,15 +40,24 @@ CREATE OR ALTER PROCEDURE audit.usp_execution_start
 AS
 BEGIN
     BEGIN TRY
-        INSERT INTO audit.etl_execution_log (procedure_name, layer, batch_id, start_time, status)
-        VALUES (@procedure_name, @layer, @batch_id, GETDATE(), 'RUNNING');
+
+        INSERT INTO audit.etl_execution_log
+            (procedure_name, layer, batch_id, start_time, status)
+        VALUES
+            (@procedure_name, @layer, @batch_id, GETDATE(), 'RUNNING');
 
         SET @execution_id = SCOPE_IDENTITY();
+
     END TRY
+
     BEGIN CATCH
-        -- Logging must never break the pipeline it is monitoring.
-        PRINT '!! WARNING: Failed to open execution log for ' + @procedure_name + ' - ' + ERROR_MESSAGE();
+
+        -- Logging errors should not interrupt pipeline execution.
+        PRINT 'WARNING: Failed to create execution log for '
+              + @procedure_name + ' - ' + ERROR_MESSAGE();
+
         SET @execution_id = NULL;
+
     END CATCH
 END;
 GO
@@ -55,6 +72,7 @@ CREATE OR ALTER PROCEDURE audit.usp_execution_end
 AS
 BEGIN
     BEGIN TRY
+
         IF @execution_id IS NOT NULL
             UPDATE audit.etl_execution_log
             SET end_time         = GETDATE(),
@@ -65,9 +83,16 @@ BEGIN
                 status           = @status,
                 error_message    = @error_message
             WHERE execution_id = @execution_id;
+
     END TRY
+
     BEGIN CATCH
-        PRINT '!! WARNING: Failed to close execution log id ' + CAST(ISNULL(@execution_id, -1) AS NVARCHAR) + ' - ' + ERROR_MESSAGE();
+
+        -- Logging errors should not interrupt pipeline execution.
+        PRINT 'WARNING: Failed to update execution log '
+              + CAST(ISNULL(@execution_id, -1) AS NVARCHAR)
+              + ' - ' + ERROR_MESSAGE();
+
     END CATCH
 END;
 GO
@@ -76,12 +101,15 @@ GO
 ===============================================================================
 Stored Procedure: audit.usp_log_table_statistics
 ===============================================================================
-Script Purpose:
-    Priority 2, Upgrade 6 - Load Statistics.
-    Records rows-before / rows-after / inserted / updated / deleted for a
-    single table load, making incremental loading easy to demonstrate.
+
+Purpose:
+- Record table-level loading statistics for each ETL execution.
+- Capture row counts before and after loading.
+- Track inserted, updated, and deleted records.
+
 ===============================================================================
 */
+
 CREATE OR ALTER PROCEDURE audit.usp_log_table_statistics
     @batch_id          INT,
     @table_name        NVARCHAR(200),
@@ -94,13 +122,38 @@ CREATE OR ALTER PROCEDURE audit.usp_log_table_statistics
 AS
 BEGIN
     BEGIN TRY
+
         INSERT INTO audit.table_statistics
-            (batch_id, table_name, rows_before, rows_after, rows_inserted, rows_updated, rows_deleted, load_time_seconds)
+            (
+                batch_id,
+                table_name,
+                rows_before,
+                rows_after,
+                rows_inserted,
+                rows_updated,
+                rows_deleted,
+                load_time_seconds
+            )
         VALUES
-            (@batch_id, @table_name, @rows_before, @rows_after, @rows_inserted, @rows_updated, @rows_deleted, @load_time_seconds);
+            (
+                @batch_id,
+                @table_name,
+                @rows_before,
+                @rows_after,
+                @rows_inserted,
+                @rows_updated,
+                @rows_deleted,
+                @load_time_seconds
+            );
+
     END TRY
+
     BEGIN CATCH
-        PRINT '!! WARNING: Failed to log table statistics for ' + @table_name + ' - ' + ERROR_MESSAGE();
+
+        -- Logging errors should not interrupt pipeline execution.
+        PRINT 'WARNING: Failed to log table statistics for '
+              + @table_name + ' - ' + ERROR_MESSAGE();
+
     END CATCH
 END;
 GO
