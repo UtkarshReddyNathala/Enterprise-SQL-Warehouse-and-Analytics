@@ -1,62 +1,117 @@
-#  Enterprise SQL Data Warehouse And Analytics Project         
-      
-### Medallion Architecture | Metadata-Driven ETL | Slowly Changing Dimensions 1 and 2 | Change Data Capture | Data Governance | Star Schema
----    
-     
-## Overview       
- 
-This project is an end-to-end **Data Warehouse solution** built using **Microsoft SQL Server**.
-  
-Data is extracted from **CRM and ERP source systems (CSV extracts)**, processing **116K+ records across 6 source systems**, and transformed through a structured **Medallion architecture (Bronze → Silver → Gold)** using **Stored Procedures**.
+# Enterprise SQL Data Warehouse and Analytics Project
 
-The system performs **ETL (Extract, Transform, Load)**, applies Data Cleaning and Data Quality Checks, builds a **Star Schema model**, and supports **Advanced SQL Analytics**. A centralized **Audit & Governance** framework ensures data is tracked, monitored, and reliable.
+### Metadata-Driven ETL | Medallion Architecture | Change Data Capture (CDC) | Slowly Changing Dimensions (SCD Type 1 & 2) | Data Quality Framework | Audit Logging | Star Schema
 
 ---
 
-## Problems Solved
+## Overview
 
-- **Fragmented data from multiple business systems:** Integrated CRM and ERP datasets into a centralized SQL data warehouse.
+This project is an end-to-end **Enterprise Data Warehouse** built using **Microsoft SQL Server**. It integrates data from multiple **CRM and ERP source systems (CSV extracts)** into a centralized analytical warehouse using a layered **Medallion Architecture (Bronze → Silver → Gold)**.
 
-- **Poor data quality in raw operational data:** Implemented data cleaning, validation checks, and standardization during Silver layer transformations.
+The solution implements a production-oriented ETL framework with **metadata-driven ingestion**, **incremental loading**, **Change Data Capture (CDC)**, **Slowly Changing Dimensions (SCD Type 1 & Type 2)**, **data quality validation**, and **comprehensive audit logging**. The curated data is modeled into a **Star Schema** to support reporting, business intelligence, and analytical workloads.
 
-- **Difficulty tracking data changes and history:** Applied SCD Type-1 and Type-2 techniques to manage updates and maintain historical records.
+To improve maintainability and operational visibility, the project includes configurable ETL pipelines, execution logging, data quality monitoring, reject-record handling, and centralized audit tables that enable reliable and traceable data processing.
 
-- **Inefficient full data reloads:** Implemented incremental loading using a watermark framework and change detection with HASHBYTES.
+---
 
-- **Lack of governance and monitoring in ETL pipelines:** Built an audit framework to track ETL runs, detect data quality issues, and log pipeline execution.
+# Problems Solved
 
-- **Slow analytical queries on transactional data:** Designed a star schema with partitioning and columnstore indexing for faster analytics.
-.
- --- 
+This project addresses several common challenges encountered while building enterprise data warehouses:
 
-### Core Capabilities
+### Centralized Data Integration
 
-* Incremental Loading (Watermark Framework)
-* SCD Type 1 and SCD Type 2 (with automated validation)
-* HASHBYTES (SHA2_256) Change Detection
-* Metadata-Driven ETL (config-driven, one row per table)
-* Partitioning & Clustered Columnstore Index
-* Audit Logging & Data Quality Validation
-* Step-Level ETL Execution Logging
-* Reject-Records Capture (bad rows are kept, not discarded)
-* ETL Monitoring Dashboard
-* Master ETL Orchestration
+Integrated CRM and ERP datasets into a unified SQL Server data warehouse, eliminating fragmented reporting across multiple operational systems.
 
+### Data Quality & Standardization
 
-##  Data Architecture
+Implemented cleansing, validation, and standardization rules to improve data consistency before loading curated analytical datasets.
 
-The data architecture for this project follows Medallion Architecture **Bronze**, **Silver**, and **Gold** layers:
+### Historical Data Tracking
+
+Applied **Slowly Changing Dimension (SCD) Type 1** and **Type 2** techniques to manage changing business entities while preserving historical information where required.
+
+### Efficient Incremental Processing
+
+Reduced unnecessary full reloads by implementing a metadata-driven incremental loading framework using watermark tracking and HASHBYTES-based change detection.
+
+### ETL Governance & Monitoring
+
+Improved pipeline reliability through centralized execution logging, audit tables, reject-record capture, load statistics, and automated data quality validation.
+
+### Analytical Performance
+
+Designed a dimensional **Star Schema** with partitioning and optimized indexing strategies to improve query performance for reporting and analytics.
+
+---
+
+# Core Capabilities
+
+### Data Integration
+
+- Metadata-Driven ETL Framework
+- Master ETL Orchestration
+- Batch Processing
+- Incremental Loading (Watermark Framework)
+- Change Data Capture (CDC)
+
+### Data Warehousing
+
+- Medallion Architecture (Bronze → Silver → Gold)
+- Star Schema Design
+- Dimension & Fact Modeling
+- Surrogate Key Generation
+
+### Data Processing
+
+- SCD Type 1
+- SCD Type 2
+- HASHBYTES (SHA2_256) Change Detection
+- Data Cleansing & Standardization
+- Business Rule Validation
+
+### Data Quality & Governance
+
+- Automated Data Quality Validation
+- Reject Records Management
+- Audit Logging
+- ETL Execution Logging
+- Load Statistics
+- Error Handling (TRY...CATCH)
+
+### Performance Optimization
+
+- Clustered Columnstore Index
+- Table Partitioning
+- MERGE-Based Loading
+- Optimized Analytical Queries
+
+### Monitoring
+
+- ETL Monitoring Dashboard
+- Execution Status Tracking
+- Data Quality Reporting
+- Pipeline Audit Framework
+
+---
+
+# Data Architecture
+
+The project follows a **Medallion Architecture**, where data progressively moves through three layers:
+
+- **Bronze Layer** – Raw ingestion of CRM and ERP source data.
+- **Silver Layer** – Data cleansing, standardization, validation, incremental processing, and historical data management.
+- **Gold Layer** – Business-ready dimensional model optimized for reporting and analytics.
+
 ![Data Architecture](docs/data_architecture.png)
 
 ---
 
-## Project Structure
+# Project Structure
 
-```
-
+```text
 Enterprise-Data-Warehouse/
 │
-├── datasets/                         # Source CSV files (CRM & ERP extracts)
+├── datasets/                         # Source CRM & ERP CSV files
 │
 ├── docs/                             # Documentation & Architecture
 │   ├── data_architecture.png
@@ -66,306 +121,467 @@ Enterprise-Data-Warehouse/
 │   ├── data_catalog.md
 │   └── naming_conventions.md
 │
-├── scripts/                          # Core SQL Implementation
+├── scripts/
 │   │
-│   ├── audit/                        # Audit & ETL control framework
-│   │   ├── ddl_audit.sql             # Tables: etl_log, data_quality_issues, etl_config,
-│   │   │                             #   watermark_thresholds, etl_execution_log, table_statistics
+│   ├── audit/                        # Audit, governance & ETL control framework
+│   │   ├── ddl_audit.sql
 │   │   ├── seed_etl_config.sql
-│   │   ├── proc_execution_logging.sql# NEW: Step-level logging + table statistics helpers
-│   │   └── proc_data_quality_checks.sql # NEW: Extended data quality rule engine
+│   │   ├── proc_execution_logging.sql
+│   │   └── proc_data_quality_checks.sql
 │   │
 │   ├── bronze/                       # Bronze layer (Raw ingestion)
 │   │   ├── ddl_bronze.sql
 │   │   └── proc_load_bronze.sql
 │   │
-│   ├── silver/                       # Silver layer (Cleaning & transformation)
-│   │   ├── ddl_silver.sql            # Includes NEW: silver.rejected_records
+│   ├── silver/                       # Silver layer (Transformation)
+│   │   ├── ddl_silver.sql
 │   │   ├── proc_load_silver.sql
 │   │   └── proc_load_metadata_driven.sql
 │   │
-│   ├── gold/                         # Gold layer (Star schema & reporting)
+│   ├── gold/                         # Gold layer (Star Schema)
 │   │   ├── ddl_gold.sql
 │   │   └── proc_load_gold.sql
 │   │
-│   ├── security/                     # Security & Access Control (RBAC)
-│   │   └── ddl_security.sql
-│   │
-│   ├── monitoring/                   # NEW: ETL Monitoring Dashboard
+│   ├── monitoring/                   # Monitoring & Reporting
 │   │   └── etl_monitoring_dashboard.sql
 │   │
-│   ├── init_database.sql             # Database initialization
-│   └── init_load_all.sql             # Master ETL orchestration
+│   ├── security/
+│   │   └── ddl_security.sql
+│   │
+│   ├── init_database.sql
+│   └── init_load_all.sql
 │
-├── Data Analytics/                   # Analytical SQL scripts (reports & insights)
+├── Data Analytics/                   # Business reporting & analytical SQL
 │
-├── tests/                            # Validation & test scripts
-│   ├── quality_checks_silver.sql     # Includes NEW: null/negative/future-date checks
-│   ├── quality_checks_gold.sql       # Includes NEW: null/negative/future-date/business-rule checks
-│   └── scd_validation_checks.sql     # NEW: SCD Type 2 validation for crm_prd_info
+├── tests/
+│   ├── quality_checks_silver.sql
+│   ├── quality_checks_gold.sql
+│   └── scd_validation_checks.sql
 │
 ├── .gitignore
 └── README.md
-
 ```
 
-### Data Model
-![Data model](docs/data_model.png)
-
 ---
 
+# Data Model
+
+The Gold layer follows a **Star Schema** consisting of dimension tables and fact tables designed for reporting and analytical workloads.
+
+![Data Model](docs/data_model.png)
+
+---
 # ETL Workflow
 
-## 1️. Bronze Layer – Raw Data Collection
-
-**Source:** CRM and ERP CSV files
-**Stored Procedure:** `bronze.load_bronze`
-
-### What Happens Here
-
-* BULK INSERT loads raw data
-* Tables truncated before load
-* Stores the data exactly as received (no changes)
-* Batch ID generated for tracking
-* Saves details of each load for record keeping in `audit.etl_log`
-* TRY–CATCH error handling
-* NEW: Writes one step-level row to `audit.etl_execution_log` per run
-* NEW: Logs before/after row counts per table to `audit.table_statistics`
-
-### Data Quality – Bronze
-
-* Tracks every data load using a Batch ID
-* Logs errors during loading
-* Prevents incomplete or partial data loads
-* Data loads can be tracked for audit and monitoring
+The ETL pipeline follows a **Bronze → Silver → Gold** architecture, where each layer has a clearly defined responsibility for ingesting, refining, and delivering analytics-ready data.
 
 ---
 
-## 2️. Silver Layer – Data Cleaning & Transformation
+# Bronze Layer – Raw Data Ingestion
 
-**Stored Procedures:**
+**Source Systems**
 
-* `silver.load_silver`
-* `silver.load_metadata_driven`
+- CRM CSV Extracts
+- ERP CSV Extracts
 
-### Data Cleaning Performed
+**Stored Procedure**
 
-* **Duplicate Removal** (e.g., keep latest record using `ROW_NUMBER()`)
-* **Missing Value Handling** (e.g., NULL customer_id flagged)
-* **Code Standardization** (e.g., M → Male)
-* **Invalid Date Correction** (e.g., wrong date set to NULL)
-* **Revenue Validation** (e.g., Sales = Quantity × Price recalculated)
-* **ID Cleanup** (e.g., remove extra spaces in customer_id)
-* **Country Standardization** (e.g., USA → United States)
-* **Data Format Consistency** (e.g., consistent date format YYYY-MM-DD)
+`bronze.load_bronze`
 
-### Data Quality – Silver
+### Responsibilities
 
-* Row Count Validation
-* Mandatory Field Checks
-* Revenue Match Check (Quantity × Price)
-* Date Validation
-* New Data Load Control (Incremental / Watermark)
-* Duplicate Record Check
-* Data Issue Logging & Tracking (`audit.data_quality_issues`)
-* NEW: Null Checks, Negative Value Checks, Future-Date Checks, and Business
-  Rule Checks (Sales = Quantity × Price), all logged with failure counts via
-  `audit.usp_run_data_quality_checks`
-* NEW: Bad rows are no longer discarded — they are captured in
-  `silver.rejected_records` with the raw row snapshot and rejection reason
+The Bronze layer acts as the landing zone for raw source data. Data is loaded exactly as received without applying business transformations.
 
-### SCD & Load Logic
+### Processing
 
-**Customers – SCD Type 1**
+- Batch Processing
+- Full Data Load
+- BULK INSERT for high-speed ingestion
+- Truncate & Reload strategy
+- Batch ID generation for traceability
 
-* MERGE statement
-* Data Change Identification (HASHBYTES)
-* Load Only New Data (Incremental Watermark)
+### Audit & Logging
 
-**Products – SCD Type 2**
+- ETL execution recorded in `audit.etl_log`
+- Step-level execution tracking through `audit.etl_execution_log`
+- Table load statistics captured in `audit.table_statistics`
+- Centralized TRY...CATCH error handling
 
-* Historical Data Tracking (Effective & Expiry Dates)
-* Current Record Indicator (is_current Flag)
-* NEW: Validated by `tests/scd_validation_checks.sql` — confirms only one
-  active record per product, no overlapping history, and Expiry Date is
-  always later than Effective Date
+### Output
 
-**Sales – Delta Load**
-
-* Load Only New Records (Watermark Filtering)
-* Faster Query Performance (Clustered Columnstore)
-* NEW: Invalid rows (missing product key, malformed order date) are captured
-  into `silver.rejected_records` instead of being silently loaded
-
-**Metadata-Driven ERP Load**
-
-* Table details stored in `audit.etl_config`
-* NEW: Config now also carries `watermark_column`, `primary_key_column`, and
-  `hash_column` — adding a new table only ever needs one config row
-* NEW: Generic NULL-key rejection gate, driven entirely by `primary_key_column`
-* Queries run dynamically (sp_executesql)
-* Full Load (Truncate & Insert)
+- Raw source tables
+- Batch-level audit information
+- Execution logs
+- Load statistics
 
 ---
 
-## 3️. Gold Layer – Reporting & Star Schema Model
+# Silver Layer – Data Cleansing & Transformation
 
-**Stored Procedure:** `gold.load_gold`
+**Stored Procedures**
 
-### Star Schema Design
+- `silver.load_silver`
+- `silver.load_metadata_driven`
 
-**Dimension Tables**
-
-* `gold.dim_customers`
-* `gold.dim_products`
-* Surrogate Keys
-* Unknown Member Handling (-1)
-
-**Fact Table**
-
-* `gold.fact_sales`
-* Partitioned by Year
-* Clustered Primary Key
-* Foreign Key Constraints
-* Business intelligence-Optimized Structure
-
-### Data Quality – Gold
-
-* Referential Integrity Enforcement
-* Foreign Key Validation
-* Unknown Key Mapping (-1)
-* Data partitions verified
-* NEW: Extended rule set run at the end of `gold.load_gold` via
-  `audit.usp_run_data_quality_checks` — Null Checks, Negative Value Checks,
-  Future-Date Checks, and the Sales = Quantity × Price Business Rule
+The Silver layer transforms raw operational data into standardized, validated, and analytics-ready datasets.
 
 ---
 
-## Enterprise Security (Gold Layer)
+## Data Cleansing
 
-The Gold layer implements database-level security using SQL Server features:
+The pipeline performs several cleansing and standardization operations, including:
 
-**Role-Based Access Control (RBAC)** Users are assigned roles (gold_analyst, gold_manager). Permissions are given to roles, not directly to users.
-
-**Row-Level Security (RLS)** Users can only see sales data for the countries they are allowed to access.
-
-**Dynamic Data Masking** The sales_amount column is hidden (masked) for analysts. Managers can see the real values.
-
-**Data Classification & Auditing** ensitive customer data is labeled, and data access activity is tracked.
-
-Security is enforced at the database level, ensuring controlled, production-ready access to reporting data.
-
-
----
-
-## 4️.Data Analytics & Business Reporting
-
-Advanced SQL analysis performed on Gold layer data using **aggregations, window functions, ranking, trend analysis, and segmentation**:
-
-* Database & Dimension Exploration
-* Measures & Date Range Analysis
-* Ranking & Magnitude Analysis
-* Change Over Time & Cumulative Analysis
-* Performance & Segmentation Analysis
-* Part-to-Whole Analysis
-* Customer & Product Reporting
-* Audit Analysis
+- Duplicate removal
+- Missing value handling
+- Data standardization
+- Invalid date correction
+- Country normalization
+- Code standardization
+- Data format consistency
+- Revenue recalculation and validation
+- Identifier cleanup
 
 ---
 
-# Recent Upgrades
+## Incremental Loading
 
-The following production-readiness upgrades were added on top of the original pipeline:
+Incremental processing minimizes unnecessary reloads while ensuring data freshness.
 
-**Priority 1 (Must Have)**
+The implementation includes:
 
-1. **ETL Execution Logging** – `audit.etl_execution_log` gives step-level monitoring
-   (one row per stored procedure run) on top of the existing table-level `audit.etl_log`.
-   Managed by `audit.usp_execution_start` / `audit.usp_execution_end`.
-2. **Expanded Data Quality Framework** – Null Checks, Negative Value Checks, Future-Date
-   Checks, and Business Rule Checks (Sales = Quantity × Price), all logged with failure
-   counts into `audit.data_quality_issues` via `audit.usp_run_data_quality_checks`.
-3. **Reject Records Table** – `silver.rejected_records` captures every bad row (raw
-   snapshot + reason) instead of silently discarding it.
-4. **ETL Monitoring Dashboard** – `scripts/monitoring/etl_monitoring_dashboard.sql`,
-   pure SQL, no stored procedures: Last Load, Status, Rows Loaded, Execution Time,
-   Failed Loads, Rejected Records.
-
-**Priority 2 (Nice Improvements)**
-
-5. **SCD Validation** – `tests/scd_validation_checks.sql` validates the Type 2 history
-   on `silver.crm_prd_info` (single active record, no overlaps, valid date ranges).
-6. **Load Statistics** – `audit.table_statistics` records rows-before / rows-after /
-   inserted / updated / deleted / load time for every table, via
-   `audit.usp_log_table_statistics`.
-7. **Consistent TRY/CATCH Error Handling** – Every stored procedure (existing and new)
-   wraps its logic in TRY/CATCH and logs Procedure, Error Number, Error Message, and
-   Execution Time.
-8. **Expanded ETL Configuration Table** – `audit.etl_config` now also stores
-   `watermark_column`, `primary_key_column`, and `hash_column`, so onboarding a new
-   metadata-driven table only ever needs one config row.
+- Watermark-based incremental loading
+- HASHBYTES (SHA2_256) change detection
+- MERGE-based upserts
+- Change Data Capture (CDC)
 
 ---
 
-# Audit & Control Framework
+## Slowly Changing Dimensions
 
-Schema: `audit`
+### Customer Dimension (SCD Type 1)
 
-* `audit.etl_log`
-* `audit.watermark_thresholds`
-* `audit.data_quality_issues`
-* `audit.etl_config`
-* `audit.etl_execution_log` — NEW: step-level execution monitoring
-* `audit.table_statistics` — NEW: before/after load volume tracking
-* Immediate ETL stop using THROW if critical errors happen
+- MERGE-based updates
+- HASH-based change detection
+- Incremental loading
+- Latest values overwrite previous records
 
 ---
 
-# Master ETL Execution
+### Product Dimension (SCD Type 2)
 
-**Stored Procedure:** `init.load_all`
-
-* Batch Initialization
-* Configuration Validation
-* Bronze → Silver → Gold Execution
-* Success/Failure Logging
-* Controlled End-to-End ETL Pipeline
+- Historical version tracking
+- Effective Date
+- Expiry Date
+- Current Record Indicator
+- Automated validation of historical records
 
 ---
 
-## How to Run
+## Sales Processing
 
-Run the scripts in this order:
+Sales data is loaded using incremental watermark processing.
 
-1. **Initialize the database** — `scripts/init_database.sql` (creates the database and
-   `bronze` / `silver` / `gold` / `audit` schemas)
-2. **Deploy the audit framework (tables first, then procedures)**
-   - `scripts/audit/ddl_audit.sql`
-   - `scripts/audit/seed_etl_config.sql`
-   - `scripts/audit/proc_execution_logging.sql`
-   - `scripts/audit/proc_data_quality_checks.sql`
-3. **Deploy layer tables (DDL)**
-   - `scripts/bronze/ddl_bronze.sql`
-   - `scripts/silver/ddl_silver.sql`
-   - `scripts/gold/ddl_gold.sql`
-4. **Deploy layer stored procedures**
-   - `scripts/bronze/proc_load_bronze.sql`
-   - `scripts/silver/proc_load_metadata_driven.sql`
-   - `scripts/silver/proc_load_silver.sql`
-   - `scripts/gold/proc_load_gold.sql`
-5. **(Optional) Apply security** — `scripts/security/ddl_security.sql`
-6. **Deploy master orchestration** — `scripts/init_load_all.sql`
-7. **Run the pipeline:**
-   ```sql
-   EXEC init.load_all;
-   ```
-8. **Check pipeline health** — `scripts/monitoring/etl_monitoring_dashboard.sql`
-9. **(Optional) Validate data quality & SCD** — run the scripts in `tests/`
+Features include:
+
+- Delta loading
+- Clustered Columnstore Index
+- Invalid record detection
+- Foreign key validation
+- Reject record capture
 
 ---
 
-**Author**: Utkarsh Reddy Nathala
+## Metadata-Driven ETL
 
-**Linkedin**: https://www.linkedin.com/in/utkarshreddynathala/
+ERP tables are loaded using a metadata-driven framework.
 
-**Contact**: utkarshnathala@gmail.com , 8977011784
+Configuration is maintained in `audit.etl_config`, allowing new tables to be onboarded through configuration rather than code changes.
+
+The metadata includes:
+
+- Source table
+- Target table
+- Watermark column
+- Primary key column
+- HASH column
+
+Dynamic SQL (`sp_executesql`) generates and executes the required loading logic.
+
+---
+
+## Data Quality Framework
+
+The Silver layer includes an automated data quality framework that validates incoming data before it reaches the analytical layer.
+
+Implemented validations include:
+
+- Row Count Validation
+- Mandatory Field Checks
+- Duplicate Detection
+- Null Checks
+- Negative Value Checks
+- Future Date Validation
+- Revenue Validation
+- Business Rule Validation
+- Incremental Load Validation
+
+Validation failures are recorded in `audit.data_quality_issues`.
+
+Records that fail critical validation rules are stored in `silver.rejected_records` together with the rejection reason, allowing investigation without losing the original data.
+
+---
+
+# Gold Layer – Reporting & Analytics
+
+**Stored Procedure**
+
+`gold.load_gold`
+
+The Gold layer transforms curated Silver data into a dimensional model optimized for business intelligence and analytical workloads.
+
+---
+
+## Star Schema
+
+### Dimension Tables
+
+- `gold.dim_customers`
+- `gold.dim_products`
+
+Features:
+
+- Surrogate Keys
+- Unknown Member Handling
+- Business-friendly attributes
+
+---
+
+### Fact Table
+
+- `gold.fact_sales`
+
+Features:
+
+- Partitioned by Year
+- Clustered Primary Key
+- Foreign Key Constraints
+- Optimized for analytical queries
+
+---
+
+## Business Transformations
+
+The Gold layer performs:
+
+- Data Integration
+- Surrogate Key Generation
+- Business Rule Application
+- Aggregations
+- Star Schema Population
+
+---
+
+## Data Quality
+
+Before data is made available for reporting, additional validation checks are performed.
+
+These include:
+
+- Referential Integrity Validation
+- Foreign Key Validation
+- Unknown Key Mapping
+- Partition Verification
+- Null Validation
+- Negative Value Validation
+- Future Date Validation
+- Revenue Business Rule Validation
+
+Validation results are logged within the centralized audit framework, ensuring complete traceability of every ETL execution.
+
+---
+
+# Enterprise Security
+
+The warehouse implements database-level security to ensure controlled access to analytical data while protecting sensitive business information.
+
+### Role-Based Access Control (RBAC)
+
+Access is managed using SQL Server database roles.
+
+- `gold_analyst`
+- `gold_manager`
+
+Permissions are assigned to roles rather than individual users, simplifying administration and improving security.
+
+---
+
+### Row-Level Security (RLS)
+
+Row-Level Security restricts users to viewing only the data they are authorized to access based on business rules.
+
+---
+
+### Dynamic Data Masking
+
+Sensitive columns such as sales-related information are masked for restricted users while remaining fully visible to authorized roles.
+
+---
+
+### Data Classification & Auditing
+
+Sensitive business data is classified and data access activities are audited, providing improved governance and compliance.
+
+---
+
+# Audit & Governance Framework
+
+The project includes a centralized audit framework that provides complete visibility into ETL execution, data quality, and operational health.
+
+### Audit Schema
+
+The `audit` schema contains the following components:
+
+- `audit.etl_log`
+- `audit.etl_execution_log`
+- `audit.table_statistics`
+- `audit.data_quality_issues`
+- `audit.watermark_thresholds`
+- `audit.etl_config`
+
+---
+
+## ETL Execution Logging
+
+Every ETL execution is automatically recorded with detailed execution information, including:
+
+- Procedure Name
+- Layer (Bronze, Silver, Gold)
+- Start Time
+- End Time
+- Execution Duration
+- Execution Status
+- Error Details
+
+This provides end-to-end visibility into every ETL execution.
+
+---
+
+## Load Statistics
+
+Load statistics are captured for every table processed during the pipeline.
+
+Tracked metrics include:
+
+- Rows Before Load
+- Rows After Load
+- Rows Inserted
+- Rows Updated
+- Rows Deleted
+- Processing Duration
+
+These statistics simplify monitoring and troubleshooting.
+
+---
+
+## Data Quality Monitoring
+
+The audit framework records all validation failures detected during ETL execution.
+
+Examples include:
+
+- Null Values
+- Duplicate Records
+- Negative Values
+- Future Dates
+- Business Rule Violations
+- Revenue Validation Failures
+
+Each issue is logged with sufficient information to support investigation and remediation.
+
+---
+
+## Metadata Configuration
+
+The ETL framework is driven by metadata stored in `audit.etl_config`.
+
+Configuration includes:
+
+- Source Table
+- Target Table
+- Primary Key Column
+- Watermark Column
+- Hash Column
+
+This enables onboarding of new datasets through configuration with minimal code changes.
+
+---
+
+# ETL Monitoring Dashboard
+
+The project includes a SQL-based monitoring dashboard for tracking pipeline execution and operational health.
+
+The dashboard provides:
+
+- Latest Pipeline Status
+- ETL Execution History
+- Rows Loaded
+- Execution Duration
+- Failed Executions
+- Data Quality Issues
+- Rejected Records
+- Load Statistics
+
+This enables quick identification of failures and overall pipeline health.
+
+---
+
+# Data Analytics & Business Reporting
+
+The Gold layer supports analytical workloads through optimized dimensional models and SQL-based reporting.
+
+Implemented analytical queries include:
+
+- Database Exploration
+- Dimension Analysis
+- Fact Table Analysis
+- Customer Analytics
+- Product Analytics
+- Sales Performance
+- Trend Analysis
+- Ranking Analysis
+- Segmentation Analysis
+- Cumulative Analysis
+- Part-to-Whole Analysis
+- Time-Series Analysis
+- Audit Reporting
+
+The dimensional model is optimized for reporting tools, business intelligence dashboards, and advanced SQL analytics.
+
+---
+
+# Master ETL Orchestration
+
+The complete ETL pipeline is orchestrated through a single stored procedure.
+
+**Stored Procedure**
+
+```sql
+init.load_all
+```
+
+### Responsibilities
+
+- Initialize Batch Execution
+- Validate Configuration
+- Execute Bronze Layer
+- Execute Silver Layer
+- Execute Gold Layer
+- Record Audit Logs
+- Update Watermarks
+- Capture Load Statistics
+- Handle Failures
+- Complete Pipeline Execution
+
+The orchestration procedure provides a fully automated end-to-end ETL workflow while ensuring auditability, reliability, and recoverability.
+
+---
