@@ -102,7 +102,8 @@ The project follows a **Medallion Architecture**, where data progressively moves
 - **Silver Layer** – Data cleansing, standardization, validation, incremental processing, and historical data management.
 - **Gold Layer** – Business-ready dimensional model optimized for reporting and analytics.
 
-![Data Architecture](docs/data_architecture.png)
+<img width="1772" height="1222" alt="data_architecture (5)" src="https://github.com/user-attachments/assets/84c703cf-b446-4e29-8afb-f5ef2d28bf0a" />
+
 
 ---
 
