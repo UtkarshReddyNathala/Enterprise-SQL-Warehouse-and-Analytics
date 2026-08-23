@@ -1,142 +1,95 @@
 /*
 ===============================================================================
-DDL Script: Create Gold Tables with Partitioning
+DDL Script: Create Gold Views
 ===============================================================================
 Script Purpose:
-    This script creates the tables for the Gold layer in the
-    data warehouse. The Gold layer contains the dimension and
-    fact tables organized in a Star Schema.
+    This script creates views for the Gold layer in the data warehouse. 
+    The Gold layer represents the final dimension and fact tables (Star Schema)
+
+    Each view performs transformations and combines data from the Silver layer 
+    to produce a clean, enriched, and business-ready dataset.
 
 Usage:
-    - These tables are populated via the 'gold.load_gold' stored procedure.
-    - These tables are used for analytics and reporting.
+    - These views can be queried directly for analytics and reporting.
 ===============================================================================
 */
 
 -- =============================================================================
--- Create Dimension Table: gold.dim_customers
+-- Create Dimension: gold.dim_customers
 -- =============================================================================
-IF OBJECT_ID('gold.dim_customers', 'U') IS NOT NULL
-    DROP TABLE gold.dim_customers;
+IF OBJECT_ID('gold.dim_customers', 'V') IS NOT NULL
+    DROP VIEW gold.dim_customers;
 GO
 
-CREATE TABLE gold.dim_customers (
-    customer_key      INT NOT NULL PRIMARY KEY, -- Surrogate PK
-    customer_id       INT,                       -- Primary Key from CRM System
-    customer_number   NVARCHAR(50),             -- Business Key
-    first_name        NVARCHAR(50),
-    last_name         NVARCHAR(50),
-    country           NVARCHAR(50),
-    marital_status    NVARCHAR(50),
-    gender            NVARCHAR(50),
-    birthdate         DATE,
-    create_date       DATETIME
-);
+CREATE VIEW gold.dim_customers AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY cst_id) AS customer_key, -- Surrogate key
+    ci.cst_id                          AS customer_id,
+    ci.cst_key                         AS customer_number,
+    ci.cst_firstname                   AS first_name,
+    ci.cst_lastname                    AS last_name,
+    la.cntry                           AS country,
+    ci.cst_marital_status              AS marital_status,
+    CASE 
+        WHEN ci.cst_gndr != 'n/a' THEN ci.cst_gndr -- CRM is the primary source for gender
+        ELSE COALESCE(ca.gen, 'n/a')  			   -- Fallback to ERP data
+    END                                AS gender,
+    ca.bdate                           AS birthdate,
+    ci.cst_create_date                 AS create_date
+FROM silver.crm_cust_info ci
+LEFT JOIN silver.erp_cust_az12 ca
+    ON ci.cst_key = ca.cid
+LEFT JOIN silver.erp_loc_a101 la
+    ON ci.cst_key = la.cid;
 GO
-
--- Seed the "Unknown" member
-INSERT INTO gold.dim_customers (customer_key, customer_id, customer_number, first_name)
-VALUES (-1, -1, 'n/a', 'Unknown');
-GO
-
-
--- =============================================================================
--- Create Dimension Table: gold.dim_products
--- =============================================================================
-IF OBJECT_ID('gold.dim_products', 'U') IS NOT NULL
-    DROP TABLE gold.dim_products;
-GO
-
-CREATE TABLE gold.dim_products (
-    product_key       INT NOT NULL PRIMARY KEY, -- Surrogate PK
-    product_id        INT,                       -- Primary Key from CRM System
-    product_number    NVARCHAR(50),             -- Business Key
-    product_name      NVARCHAR(255),
-    category_id       NVARCHAR(50),
-    category          NVARCHAR(50),
-    subcategory       NVARCHAR(50),
-    maintenance       NVARCHAR(50),
-    cost              MONEY,
-    product_line      NVARCHAR(50),
-    start_date        DATETIME
-);
-GO
-
--- Seed the "Unknown" member
-INSERT INTO gold.dim_products (product_key, product_id, product_number, product_name)
-VALUES (-1, -1, 'n/a', 'Unknown');
-GO
-
 
 -- =============================================================================
--- Partition Function: Partition gold.fact_sales by Year (order_date)
+-- Create Dimension: gold.dim_products
 -- =============================================================================
-IF EXISTS (SELECT * FROM sys.partition_functions WHERE name = 'pf_fact_sales_orderdate')
-    DROP PARTITION FUNCTION pf_fact_sales_orderdate;
+IF OBJECT_ID('gold.dim_products', 'V') IS NOT NULL
+    DROP VIEW gold.dim_products;
 GO
 
-CREATE PARTITION FUNCTION pf_fact_sales_orderdate (DATE)
-AS RANGE LEFT FOR VALUES
-(
-    '2023-12-31',
-    '2024-12-31',
-    '2025-12-31',
-    '2026-12-31'
-);
+CREATE VIEW gold.dim_products AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY pn.prd_start_dt, pn.prd_key) AS product_key, -- Surrogate key
+    pn.prd_id       AS product_id,
+    pn.prd_key      AS product_number,
+    pn.prd_nm       AS product_name,
+    pn.cat_id       AS category_id,
+    pc.cat          AS category,
+    pc.subcat       AS subcategory,
+    pc.maintenance  AS maintenance,
+    pn.prd_cost     AS cost,
+    pn.prd_line     AS product_line,
+    pn.prd_start_dt AS start_date
+FROM silver.crm_prd_info pn
+LEFT JOIN silver.erp_px_cat_g1v2 pc
+    ON pn.cat_id = pc.id
+WHERE pn.prd_end_dt IS NULL; -- Filter out all historical data
 GO
 
-
 -- =============================================================================
--- Partition Scheme: Map partitions to PRIMARY filegroup
+-- Create Fact Table: gold.fact_sales
 -- =============================================================================
-IF EXISTS (SELECT * FROM sys.partition_schemes WHERE name = 'ps_fact_sales_orderdate')
-    DROP PARTITION SCHEME ps_fact_sales_orderdate;
+IF OBJECT_ID('gold.fact_sales', 'V') IS NOT NULL
+    DROP VIEW gold.fact_sales;
 GO
 
-CREATE PARTITION SCHEME ps_fact_sales_orderdate
-AS PARTITION pf_fact_sales_orderdate
-ALL TO ([PRIMARY]);
+CREATE VIEW gold.fact_sales AS
+SELECT
+    sd.sls_ord_num  AS order_number,
+    pr.product_key  AS product_key,
+    cu.customer_key AS customer_key,
+    sd.sls_order_dt AS order_date,
+    sd.sls_ship_dt  AS shipping_date,
+    sd.sls_due_dt   AS due_date,
+    sd.sls_sales    AS sales_amount,
+    sd.sls_quantity AS quantity,
+    sd.sls_price    AS price
+FROM silver.crm_sales_details sd
+LEFT JOIN gold.dim_products pr
+    ON sd.sls_prd_key = pr.product_number
+LEFT JOIN gold.dim_customers cu
+    ON sd.sls_cust_id = cu.customer_id;
 GO
-
-
--- =============================================================================
--- Create Fact Table: gold.fact_sales (Partitioned)
--- =============================================================================
-IF OBJECT_ID('gold.fact_sales', 'U') IS NOT NULL
-    DROP TABLE gold.fact_sales;
-GO
-
-CREATE TABLE gold.fact_sales (
-    order_number      NVARCHAR(50) NOT NULL,   -- Source System PK
-    product_key       INT NOT NULL,            -- FK to dim_products
-    customer_key      INT NOT NULL,            -- FK to dim_customers
-    order_date        DATE NOT NULL,
-    shipping_date     DATE,
-    due_date          DATE,
-    sales_amount      MONEY,
-    quantity          INT,
-    price             MONEY,
-    CONSTRAINT PK_fact_sales PRIMARY KEY CLUSTERED (order_date, order_number)
-        ON ps_fact_sales_orderdate(order_date),
-    CONSTRAINT FK_fact_product FOREIGN KEY (product_key)
-        REFERENCES gold.dim_products(product_key),
-    CONSTRAINT FK_fact_customer FOREIGN KEY (customer_key)
-        REFERENCES gold.dim_customers(customer_key)
-) ON ps_fact_sales_orderdate(order_date);
-GO
-
-
--- =============================================================================
--- Create Indexes on Foreign Keys
--- =============================================================================
-CREATE INDEX IDX_fact_product ON gold.fact_sales(product_key)
-    ON ps_fact_sales_orderdate(order_date);
-
-CREATE INDEX IDX_fact_customer ON gold.fact_sales(customer_key)
-    ON ps_fact_sales_orderdate(order_date);
-GO
-
-
-PRINT '------------------------------------------------';
-PRINT 'Gold Layer Tables Created Successfully with FKs, Indexes, and Partitioning';
-PRINT '------------------------------------------------';
