@@ -3,650 +3,251 @@
 Stored Procedure: Load Silver Layer (Bronze -> Silver)
 ===============================================================================
 Script Purpose:
-    This stored procedure performs the ETL process to load data from the
-    'bronze' schema into the 'silver' schema as part of the transformation layer.
+    This stored procedure performs the ETL (Extract, Transform, Load) process to 
+    populate the 'silver' schema tables from the 'bronze' schema.
+	Actions Performed:
+		- Truncates Silver tables.
+		- Inserts transformed and cleansed data from Bronze into Silver tables.
+		
+Parameters:
+    None. 
+	  This stored procedure does not accept any parameters or return any values.
 
-Features:
-    - Hash-based change detection using HASHBYTES.
-    - Watermark (CDC) framework for incremental and delta loading.
-    - Hybrid loading strategy:
-        • Incremental (SCD Type 1) for Customers
-        • SCD Type 2 for Products
-        • Delta Load for Sales
-    - Metadata-driven loading for ERP tables.
-    - Individual table-level transaction handling.
-    - Persistent audit logging using audit.etl_log.
-    - Data quality validation using audit.data_quality_issues.
-    - Step-level execution logging using audit.etl_execution_log.
-    - Rejected rows are stored in silver.rejected_records.
-    - Table statistics are logged to audit.table_statistics.
+Usage Example:
+    EXEC Silver.load_silver;
 ===============================================================================
 */
 
-CREATE OR ALTER PROCEDURE silver.load_silver @batch_id INT = NULL AS
+CREATE OR ALTER PROCEDURE silver.load_silver AS
 BEGIN
-    DECLARE @start_time DATETIME, @end_time DATETIME, @batch_start_time DATETIME, @batch_end_time DATETIME;
-    DECLARE @rows_inserted INT;       -- Number of inserted rows
-    DECLARE @rows_updated  INT;       -- Number of updated rows
-    DECLARE @rows_before   INT;       -- Row count before loading
-    DECLARE @last_watermark DATETIME; -- Watermark used for incremental loading
-
-    -- Variables for DQ Checks
-    DECLARE @brz_cnt INT, @slv_cnt INT;
-    DECLARE @brz_sales_sum MONEY, @slv_sales_sum MONEY;
-
-    -- Running totals for execution logging
-    DECLARE @total_inserted BIGINT = 0, @total_updated BIGINT = 0, @total_rejected BIGINT = 0;
-    DECLARE @step_rejected  INT;
-
-    -- Open a step-level execution record
-    DECLARE @execution_id INT;
-    EXEC audit.usp_execution_start
-        @procedure_name = 'silver.load_silver',
-        @layer          = 'Silver',
-        @batch_id       = @batch_id,
-        @execution_id   = @execution_id OUTPUT;
-
+    DECLARE @start_time DATETIME, @end_time DATETIME, @batch_start_time DATETIME, @batch_end_time DATETIME; 
     BEGIN TRY
         SET @batch_start_time = GETDATE();
-        -- Global Transaction removed to allow per-table commits
-
         PRINT '================================================';
-        PRINT 'Loading Silver Layer | Batch ID: ' + CAST(ISNULL(@batch_id, 0) AS NVARCHAR);
+        PRINT 'Loading Silver Layer';
         PRINT '================================================';
 
-        PRINT '------------------------------------------------';
-        PRINT 'Loading CRM Tables (Hardcoded Logic with Watermarks)';
-        PRINT '------------------------------------------------';
+		PRINT '------------------------------------------------';
+		PRINT 'Loading CRM Tables';
+		PRINT '------------------------------------------------';
 
-        -- ======================================================
-        -- Loading silver.crm_cust_info (INCREMENTAL - SCD TYPE 1 with Watermark & Hashing)
-        -- ======================================================
+		-- Loading silver.crm_cust_info
         SET @start_time = GETDATE();
-        SELECT @rows_before = COUNT(*) FROM silver.crm_cust_info;
-
-        -- Get last processed date from the watermark table
-        SELECT @last_watermark = ISNULL(last_load_date, '1900-01-01')
-        FROM audit.watermark_thresholds
-        WHERE table_name = 'silver.crm_cust_info';
-
-        PRINT '>> Starting Incremental Merge: silver.crm_cust_info (Watermark: ' + CAST(ISNULL(@last_watermark, '1900-01-01') AS NVARCHAR) + ')';
-
-        -- Capture rows with a NULL CustomerID
-        INSERT INTO silver.rejected_records (batch_id, source_table, record_data, reject_reason)
-        SELECT
-            @batch_id,
-            'bronze.crm_cust_info',
-            CONCAT('cst_key=', ISNULL(cst_key, ''), '|cst_firstname=', ISNULL(cst_firstname, ''),
-                   '|cst_lastname=', ISNULL(cst_lastname, ''), '|cst_create_date=', ISNULL(CAST(cst_create_date AS NVARCHAR), '')),
-            'NULL CustomerID'
-        FROM bronze.crm_cust_info
-        WHERE cst_id IS NULL;
-
-        SET @step_rejected = @@ROWCOUNT;
-        SET @total_rejected += @step_rejected;
-
-        BEGIN TRANSACTION;
-
-            -- Capture whether each MERGE operation performs an INSERT or UPDATE
-            DECLARE @cust_merge_output TABLE (action_type NVARCHAR(10));
-
-            MERGE silver.crm_cust_info AS target
-            USING (
-                SELECT
-                    *,
-                    -- Generate hash for change detection
-                    HASHBYTES('SHA2_256',
-                        CONCAT(
-                            ISNULL(CAST(cst_key AS NVARCHAR), ''), '|',
-                            ISNULL(cst_firstname, ''), '|',
-                            ISNULL(cst_lastname, ''), '|',
-                            ISNULL(cst_marital_status, ''), '|',
-                            ISNULL(cst_gndr, '')
-                        )
-                    ) AS source_hash
-                FROM (
-                    SELECT
-                        cst_id,
-                        cst_key,
-                        TRIM(cst_firstname) AS cst_firstname,
-                        TRIM(cst_lastname) AS cst_lastname,
-                        CASE
-                            WHEN UPPER(TRIM(cst_marital_status)) = 'S' THEN 'Single'
-                            WHEN UPPER(TRIM(cst_marital_status)) = 'M' THEN 'Married'
-                            ELSE 'n/a'
-                        END AS cst_marital_status,
-                        CASE
-                            WHEN UPPER(TRIM(cst_gndr)) = 'F' THEN 'Female'
-                            WHEN UPPER(TRIM(cst_gndr)) = 'M' THEN 'Male'
-                            ELSE 'n/a'
-                        END AS cst_gndr,
-                        cst_create_date
-                    FROM (
-                        SELECT
-                            *,
-                            ROW_NUMBER() OVER (PARTITION BY cst_id ORDER BY cst_create_date DESC) AS flag_last
-                        FROM bronze.crm_cust_info
-                        WHERE cst_id IS NOT NULL
-                          AND cst_create_date > @last_watermark
-                    ) t
-                    WHERE flag_last = 1
-                ) sub
-            ) AS source
-            ON (target.cst_id = source.cst_id)
-
-            -- Compare hashes to identify changes
-            WHEN MATCHED AND target.dwh_hash_full <> source.source_hash THEN
-                UPDATE SET
-                    target.cst_key = source.cst_key,
-                    target.cst_firstname = source.cst_firstname,
-                    target.cst_lastname = source.cst_lastname,
-                    target.cst_marital_status = source.cst_marital_status,
-                    target.cst_gndr = source.cst_gndr,
-                    target.dwh_hash_full = source.source_hash,
-                    target.dwh_create_date = GETDATE()
-
-            WHEN NOT MATCHED THEN
-                INSERT (cst_id, cst_key, cst_firstname, cst_lastname, cst_marital_status, cst_gndr, cst_create_date, dwh_hash_full)
-                VALUES (source.cst_id, source.cst_key, source.cst_firstname, source.cst_lastname, source.cst_marital_status, source.cst_gndr, source.cst_create_date, source.source_hash)
-
-            OUTPUT $action INTO @cust_merge_output;
-
-            SET @rows_inserted = (SELECT COUNT(*) FROM @cust_merge_output WHERE action_type = 'INSERT');
-            SET @rows_updated  = (SELECT COUNT(*) FROM @cust_merge_output WHERE action_type = 'UPDATE');
-
-            -- Update the watermark after a successful load
-            IF (@rows_inserted + @rows_updated) > 0
-                UPDATE audit.watermark_thresholds
-                SET last_load_date = (
-                    SELECT DATEADD(day, -1, MAX(cst_create_date))
-                    FROM bronze.crm_cust_info
-                    WHERE cst_create_date > @last_watermark
-                )
-                WHERE table_name = 'silver.crm_cust_info';
-
-        COMMIT TRANSACTION;
-
-        SET @end_time = GETDATE();
-        SET @total_inserted += @rows_inserted;
-        SET @total_updated  += @rows_updated;
-
-        -- DQ CHECK: Row Count
-        SELECT @brz_cnt = COUNT(DISTINCT cst_id)
-        FROM bronze.crm_cust_info
-        WHERE cst_id IS NOT NULL;
-
-        SELECT @slv_cnt = COUNT(*)
-        FROM silver.crm_cust_info;
-
-        IF @brz_cnt <> @slv_cnt
-            INSERT INTO audit.data_quality_issues
-                (batch_id, table_name, check_name, expected_value, actual_value, failed_rows, issue_description, check_layer)
-            VALUES
-                (@batch_id, 'silver.crm_cust_info', 'Row Count', @brz_cnt, @slv_cnt,
-                 ABS(@brz_cnt - @slv_cnt), 'Customer record mismatch', 'Silver');
-
+		PRINT '>> Truncating Table: silver.crm_cust_info';
+		TRUNCATE TABLE silver.crm_cust_info;
+		PRINT '>> Inserting Data Into: silver.crm_cust_info';
+		INSERT INTO silver.crm_cust_info (
+			cst_id, 
+			cst_key, 
+			cst_firstname, 
+			cst_lastname, 
+			cst_marital_status, 
+			cst_gndr,
+			cst_create_date
+		)
+		SELECT
+			cst_id,
+			cst_key,
+			TRIM(cst_firstname) AS cst_firstname,
+			TRIM(cst_lastname) AS cst_lastname,
+			CASE 
+				WHEN UPPER(TRIM(cst_marital_status)) = 'S' THEN 'Single'
+				WHEN UPPER(TRIM(cst_marital_status)) = 'M' THEN 'Married'
+				ELSE 'n/a'
+			END AS cst_marital_status, -- Normalize marital status values to readable format
+			CASE 
+				WHEN UPPER(TRIM(cst_gndr)) = 'F' THEN 'Female'
+				WHEN UPPER(TRIM(cst_gndr)) = 'M' THEN 'Male'
+				ELSE 'n/a'
+			END AS cst_gndr, -- Normalize gender values to readable format
+			cst_create_date
+		FROM (
+			SELECT
+				*,
+				ROW_NUMBER() OVER (PARTITION BY cst_id ORDER BY cst_create_date DESC) AS flag_last
+			FROM bronze.crm_cust_info
+			WHERE cst_id IS NOT NULL
+		) t
+		WHERE flag_last = 1; -- Select the most recent record per customer
+		SET @end_time = GETDATE();
         PRINT '>> Load Duration: ' + CAST(DATEDIFF(SECOND, @start_time, @end_time) AS NVARCHAR) + ' seconds';
-
-        INSERT INTO audit.etl_log
-            (batch_id, table_name, start_time, end_time, row_count, status)
-        VALUES
-            (@batch_id, 'silver.crm_cust_info', @start_time, @end_time,
-             @rows_inserted + @rows_updated, 'Success');
-
-        EXEC audit.usp_log_table_statistics
-            @batch_id,
-            'silver.crm_cust_info',
-            @rows_before,
-            @slv_cnt,
-            @rows_inserted,
-            @rows_updated,
-            0,
-            DATEDIFF(SECOND, @start_time, @end_time);
-
         PRINT '>> -------------';
 
-            SET @rows_inserted = (SELECT COUNT(*) FROM @cust_merge_output WHERE action_type = 'INSERT');
-            SET @rows_updated  = (SELECT COUNT(*) FROM @cust_merge_output WHERE action_type = 'UPDATE');
-
-            -- Update watermark after a successful load
-            -- One-day buffer helps include late-arriving records
-            IF (@rows_inserted + @rows_updated) > 0
-                UPDATE audit.watermark_thresholds
-                SET last_load_date = (SELECT DATEADD(day, -1, MAX(cst_create_date)) FROM bronze.crm_cust_info WHERE cst_create_date > @last_watermark)
-                WHERE table_name = 'silver.crm_cust_info';
-        COMMIT TRANSACTION;
-
+		-- Loading silver.crm_prd_info
+        SET @start_time = GETDATE();
+		PRINT '>> Truncating Table: silver.crm_prd_info';
+		TRUNCATE TABLE silver.crm_prd_info;
+		PRINT '>> Inserting Data Into: silver.crm_prd_info';
+		INSERT INTO silver.crm_prd_info (
+			prd_id,
+			cat_id,
+			prd_key,
+			prd_nm,
+			prd_cost,
+			prd_line,
+			prd_start_dt,
+			prd_end_dt
+		)
+		SELECT
+			prd_id,
+			REPLACE(SUBSTRING(prd_key, 1, 5), '-', '_') AS cat_id, -- Extract category ID
+			SUBSTRING(prd_key, 7, LEN(prd_key)) AS prd_key,        -- Extract product key
+			prd_nm,
+			ISNULL(prd_cost, 0) AS prd_cost,
+			CASE 
+				WHEN UPPER(TRIM(prd_line)) = 'M' THEN 'Mountain'
+				WHEN UPPER(TRIM(prd_line)) = 'R' THEN 'Road'
+				WHEN UPPER(TRIM(prd_line)) = 'S' THEN 'Other Sales'
+				WHEN UPPER(TRIM(prd_line)) = 'T' THEN 'Touring'
+				ELSE 'n/a'
+			END AS prd_line, -- Map product line codes to descriptive values
+			CAST(prd_start_dt AS DATE) AS prd_start_dt,
+			CAST(
+				LEAD(prd_start_dt) OVER (PARTITION BY prd_key ORDER BY prd_start_dt) - 1 
+				AS DATE
+			) AS prd_end_dt -- Calculate end date as one day before the next start date
+		FROM bronze.crm_prd_info;
         SET @end_time = GETDATE();
-        SET @total_inserted += @rows_inserted;
-        SET @total_updated  += @rows_updated;
-
-        -- DQ CHECK: Row Count
-        SELECT @brz_cnt = COUNT(DISTINCT cst_id) FROM bronze.crm_cust_info WHERE cst_id IS NOT NULL;
-        SELECT @slv_cnt = COUNT(*) FROM silver.crm_cust_info;
-        IF @brz_cnt <> @slv_cnt
-            INSERT INTO audit.data_quality_issues (batch_id, table_name, check_name, expected_value, actual_value, failed_rows, issue_description, check_layer)
-            VALUES (@batch_id, 'silver.crm_cust_info', 'Row Count', @brz_cnt, @slv_cnt, ABS(@brz_cnt - @slv_cnt), 'Customer record mismatch', 'Silver');
-
         PRINT '>> Load Duration: ' + CAST(DATEDIFF(SECOND, @start_time, @end_time) AS NVARCHAR) + ' seconds';
-        
-        INSERT INTO audit.etl_log (batch_id, table_name, start_time, end_time, row_count, status)
-        VALUES (@batch_id, 'silver.crm_cust_info', @start_time, @end_time, @rows_inserted + @rows_updated, 'Success');
-
-        EXEC audit.usp_log_table_statistics
-            @batch_id,
-            'silver.crm_cust_info',
-            @rows_before,
-            @slv_cnt,
-            @rows_inserted,
-            @rows_updated,
-            0,
-            DATEDIFF(SECOND, @start_time, @end_time);
-
         PRINT '>> -------------';
 
-        -- ======================================================
-        -- Loading silver.crm_prd_info (SCD Type 2 with Hashing)
-        -- ======================================================
+        -- Loading crm_sales_details
         SET @start_time = GETDATE();
-        SELECT @rows_before = COUNT(*) FROM silver.crm_prd_info;
-        PRINT '>> Starting SCD Type 2 Process: silver.crm_prd_info';
-
-        BEGIN TRANSACTION;
-
-            -- Step 1: Expire existing records when product details change
-            UPDATE target
-            SET target.expiry_date = GETDATE(),
-                target.is_current = 0
-            FROM silver.crm_prd_info target
-            JOIN (
-                SELECT
-                    prd_id,
-                    HASHBYTES(
-                        'SHA2_256',
-                        CONCAT(
-                            ISNULL(prd_nm, ''), '|',
-                            ISNULL(CAST(prd_cost AS NVARCHAR), '0'), '|',
-                            ISNULL(TRIM(prd_line), '')
-                        )
-                    ) AS source_hash
-                FROM bronze.crm_prd_info
-            ) source
-                ON target.prd_id = source.prd_id
-            WHERE target.is_current = 1
-              AND target.dwh_hash_full <> source.source_hash;
-
-            SET @rows_updated = @@ROWCOUNT;
-
-            -- Step 2: Insert current product version
-            INSERT INTO silver.crm_prd_info (
-                prd_id,
-                cat_id,
-                prd_key,
-                prd_nm,
-                prd_cost,
-                prd_line,
-                effective_date,
-                is_current,
-                dwh_hash_full
-            )
-            SELECT
-                prd_id,
-                REPLACE(SUBSTRING(prd_key, 1, 5), '-', '_') AS cat_id,
-                SUBSTRING(prd_key, 7, LEN(prd_key)) AS prd_key,
-                prd_nm,
-                ISNULL(prd_cost, 0) AS prd_cost,
-                CASE
-                    WHEN UPPER(TRIM(prd_line)) = 'M' THEN 'Mountain'
-                    WHEN UPPER(TRIM(prd_line)) = 'R' THEN 'Road'
-                    WHEN UPPER(TRIM(prd_line)) = 'S' THEN 'Other Sales'
-                    WHEN UPPER(TRIM(prd_line)) = 'T' THEN 'Touring'
-                    ELSE 'n/a'
-                END AS prd_line,
-                GETDATE(),
-                1,
-                HASHBYTES(
-                    'SHA2_256',
-                    CONCAT(
-                        ISNULL(prd_nm, ''), '|',
-                        ISNULL(CAST(prd_cost AS NVARCHAR), '0'), '|',
-                        ISNULL(TRIM(prd_line), '')
-                    )
-                )
-            FROM bronze.crm_prd_info s
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM silver.crm_prd_info t
-                WHERE t.prd_id = s.prd_id
-                  AND t.is_current = 1
-            );
-
-            SET @rows_inserted = @@ROWCOUNT;
-
-        COMMIT TRANSACTION;
-
+		PRINT '>> Truncating Table: silver.crm_sales_details';
+		TRUNCATE TABLE silver.crm_sales_details;
+		PRINT '>> Inserting Data Into: silver.crm_sales_details';
+		INSERT INTO silver.crm_sales_details (
+			sls_ord_num,
+			sls_prd_key,
+			sls_cust_id,
+			sls_order_dt,
+			sls_ship_dt,
+			sls_due_dt,
+			sls_sales,
+			sls_quantity,
+			sls_price
+		)
+		SELECT 
+			sls_ord_num,
+			sls_prd_key,
+			sls_cust_id,
+			CASE 
+				WHEN sls_order_dt = 0 OR LEN(sls_order_dt) != 8 THEN NULL
+				ELSE CAST(CAST(sls_order_dt AS VARCHAR) AS DATE)
+			END AS sls_order_dt,
+			CASE 
+				WHEN sls_ship_dt = 0 OR LEN(sls_ship_dt) != 8 THEN NULL
+				ELSE CAST(CAST(sls_ship_dt AS VARCHAR) AS DATE)
+			END AS sls_ship_dt,
+			CASE 
+				WHEN sls_due_dt = 0 OR LEN(sls_due_dt) != 8 THEN NULL
+				ELSE CAST(CAST(sls_due_dt AS VARCHAR) AS DATE)
+			END AS sls_due_dt,
+			CASE 
+				WHEN sls_sales IS NULL OR sls_sales <= 0 OR sls_sales != sls_quantity * ABS(sls_price) 
+					THEN sls_quantity * ABS(sls_price)
+				ELSE sls_sales
+			END AS sls_sales, -- Recalculate sales if original value is missing or incorrect
+			sls_quantity,
+			CASE 
+				WHEN sls_price IS NULL OR sls_price <= 0 
+					THEN sls_sales / NULLIF(sls_quantity, 0)
+				ELSE sls_price  -- Derive price if original value is invalid
+			END AS sls_price
+		FROM bronze.crm_sales_details;
         SET @end_time = GETDATE();
-        SET @total_inserted += @rows_inserted;
-        SET @total_updated += @rows_updated;
-
-        -- DQ CHECK: Duplicate Product Key Detection
-        SELECT @slv_cnt = COUNT(prd_key)
-        FROM silver.crm_prd_info
-        WHERE is_current = 1;
-
-        SELECT @brz_cnt = COUNT(DISTINCT prd_key)
-        FROM bronze.crm_prd_info;
-
-        IF @slv_cnt <> @brz_cnt
-            INSERT INTO audit.data_quality_issues (
-                batch_id,
-                table_name,
-                check_name,
-                expected_value,
-                actual_value,
-                failed_rows,
-                issue_description,
-                check_layer
-            )
-            VALUES (
-                @batch_id,
-                'silver.crm_prd_info',
-                'Duplicate Check',
-                @brz_cnt,
-                @slv_cnt,
-                ABS(@brz_cnt - @slv_cnt),
-                'Duplicate active product keys detected',
-                'Silver'
-            );
-
-        INSERT INTO audit.etl_log (
-            batch_id,
-            table_name,
-            start_time,
-            end_time,
-            row_count,
-            status
-        )
-        VALUES (
-            @batch_id,
-            'silver.crm_prd_info',
-            @start_time,
-            @end_time,
-            @rows_inserted,
-            'Success'
-        );
-
-        EXEC audit.usp_log_table_statistics
-            @batch_id,
-            'silver.crm_prd_info',
-            @rows_before,
-            (SELECT COUNT(*) FROM silver.crm_prd_info),
-            @rows_inserted,
-            @rows_updated,
-            0,
-            DATEDIFF(SECOND, @start_time, @end_time);
-
+        PRINT '>> Load Duration: ' + CAST(DATEDIFF(SECOND, @start_time, @end_time) AS NVARCHAR) + ' seconds';
         PRINT '>> -------------';
 
-        -- ======================================================
-        -- Loading silver.crm_sales_details (Delta Load with Watermark)
-        -- ======================================================
+        -- Loading erp_cust_az12
         SET @start_time = GETDATE();
-        SELECT @rows_before = COUNT(*) FROM silver.crm_sales_details;
-        
-        -- Get watermark
-        SELECT @last_watermark = ISNULL(last_load_date, '1900-01-01') 
-        FROM audit.watermark_thresholds 
-        WHERE table_name = 'silver.crm_sales_details';
-
-        PRINT '>> Starting Delta Load: silver.crm_sales_details (Watermark: ' + CAST(ISNULL(@last_watermark, '1900-01-01') AS NVARCHAR) + ')';
-
-        -- Capture invalid sales records before loading
-        INSERT INTO silver.rejected_records (batch_id, source_table, record_data, reject_reason)
-        SELECT
-            @batch_id,
-            'bronze.crm_sales_details',
-            CONCAT('sls_ord_num=', ISNULL(sls_ord_num, ''), '|sls_prd_key=', ISNULL(sls_prd_key, ''),
-                   '|sls_cust_id=', ISNULL(CAST(sls_cust_id AS NVARCHAR), ''), '|sls_order_dt=', ISNULL(CAST(sls_order_dt AS NVARCHAR), 'NULL')),
-            CASE 
-                WHEN sls_prd_key IS NULL THEN 'Invalid Product'
-                ELSE 'Invalid OrderDate'
-            END
-        FROM bronze.crm_sales_details
-        WHERE sls_order_dt > CAST(CONVERT(VARCHAR, @last_watermark, 112) AS INT)
-          AND (sls_prd_key IS NULL OR sls_order_dt = 0 OR LEN(CAST(sls_order_dt AS NVARCHAR)) != 8);
-
-        SET @step_rejected = @@ROWCOUNT;
-        SET @total_rejected += @step_rejected;
-        
-        BEGIN TRANSACTION;
-
-            INSERT INTO silver.crm_sales_details (
-                sls_ord_num,
-                sls_prd_key,
-                sls_cust_id,
-                sls_order_dt,
-                sls_ship_dt,
-                sls_due_dt,
-                sls_sales,
-                sls_quantity,
-                sls_price
-            )
-            SELECT
-                sls_ord_num,
-                sls_prd_key,
-                sls_cust_id,
-                CASE
-                    WHEN sls_order_dt = 0 OR LEN(sls_order_dt) != 8
-                        THEN NULL
-                    ELSE CAST(CAST(sls_order_dt AS VARCHAR) AS DATE)
-                END,
-                CASE
-                    WHEN sls_ship_dt = 0 OR LEN(sls_ship_dt) != 8
-                        THEN NULL
-                    ELSE CAST(CAST(sls_ship_dt AS VARCHAR) AS DATE)
-                END,
-                CASE
-                    WHEN sls_due_dt = 0 OR LEN(sls_due_dt) != 8
-                        THEN NULL
-                    ELSE CAST(CAST(sls_due_dt AS VARCHAR) AS DATE)
-                END,
-                CASE
-                    WHEN sls_sales IS NULL
-                      OR sls_sales <= 0
-                      OR sls_sales <> sls_quantity * ABS(sls_price)
-                        THEN CAST(sls_quantity * ABS(sls_price) AS MONEY)
-                    ELSE CAST(sls_sales AS MONEY)
-                END,
-                sls_quantity,
-                CASE
-                    WHEN sls_price IS NULL OR sls_price <= 0
-                        THEN CAST(sls_sales / NULLIF(sls_quantity, 0) AS MONEY)
-                    ELSE CAST(sls_price AS MONEY)
-                END
-            FROM bronze.crm_sales_details
-            WHERE sls_order_dt > CAST(CONVERT(VARCHAR, @last_watermark, 112) AS INT);
-
-            SET @rows_inserted = @@ROWCOUNT;
-
-            -- Update watermark after successful load
-            -- One-day buffer helps include late-arriving records
-            IF @rows_inserted > 0
-                UPDATE audit.watermark_thresholds
-                SET last_load_date =
-                    (
-                        SELECT DATEADD(
-                                   day,
-                                   -1,
-                                   CAST(CAST(MAX(sls_order_dt) AS VARCHAR) AS DATETIME)
-                               )
-                        FROM bronze.crm_sales_details
-                        WHERE sls_order_dt > CAST(CONVERT(VARCHAR, @last_watermark, 112) AS INT)
-                    )
-                WHERE table_name = 'silver.crm_sales_details';
-
-        COMMIT TRANSACTION;
-
-        SET @end_time = GETDATE();
-        SET @total_inserted += @rows_inserted;
-
-        -- DQ CHECK: Sales Total Reconciliation
-        SELECT @brz_sales_sum =
-            SUM(
-                CAST(
-                    CASE
-                        WHEN sls_sales IS NULL OR sls_sales <= 0
-                            THEN sls_quantity * ABS(sls_price)
-                        ELSE sls_sales
-                    END AS MONEY
-                )
-            )
-        FROM bronze.crm_sales_details
-        WHERE sls_order_dt > CAST(CONVERT(VARCHAR, @last_watermark, 112) AS INT);
-
-        SELECT @slv_sales_sum =
-            SUM(sls_sales)
-        FROM silver.crm_sales_details
-        WHERE sls_order_dt > @last_watermark;
-
-        IF ISNULL(@brz_sales_sum, 0) <> ISNULL(@slv_sales_sum, 0)
-            INSERT INTO audit.data_quality_issues (
-                batch_id,
-                table_name,
-                check_name,
-                expected_value,
-                actual_value,
-                failed_rows,
-                issue_description,
-                check_layer
-            )
-            VALUES (
-                @batch_id,
-                'silver.crm_sales_details',
-                'Revenue Check',
-                @brz_sales_sum,
-                @slv_sales_sum,
-                1,
-                'Sales amount mismatch during delta load',
-                'Silver'
-            );
-
-        INSERT INTO audit.etl_log (
-            batch_id,
-            table_name,
-            start_time,
-            end_time,
-            row_count,
-            status
-        )
-        VALUES (
-            @batch_id,
-            'silver.crm_sales_details',
-            @start_time,
-            @end_time,
-            @rows_inserted,
-            'Success'
-        );
-
-        EXEC audit.usp_log_table_statistics
-            @batch_id,
-            'silver.crm_sales_details',
-            @rows_before,
-            (SELECT COUNT(*) FROM silver.crm_sales_details),
-            @rows_inserted,
-            0,
-            0,
-            DATEDIFF(SECOND, @start_time, @end_time);
-
+		PRINT '>> Truncating Table: silver.erp_cust_az12';
+		TRUNCATE TABLE silver.erp_cust_az12;
+		PRINT '>> Inserting Data Into: silver.erp_cust_az12';
+		INSERT INTO silver.erp_cust_az12 (
+			cid,
+			bdate,
+			gen
+		)
+		SELECT
+			CASE
+				WHEN cid LIKE 'NAS%' THEN SUBSTRING(cid, 4, LEN(cid)) -- Remove 'NAS' prefix if present
+				ELSE cid
+			END AS cid, 
+			CASE
+				WHEN bdate > GETDATE() THEN NULL
+				ELSE bdate
+			END AS bdate, -- Set future birthdates to NULL
+			CASE
+				WHEN UPPER(TRIM(gen)) IN ('F', 'FEMALE') THEN 'Female'
+				WHEN UPPER(TRIM(gen)) IN ('M', 'MALE') THEN 'Male'
+				ELSE 'n/a'
+			END AS gen -- Normalize gender values and handle unknown cases
+		FROM bronze.erp_cust_az12;
+	    SET @end_time = GETDATE();
+        PRINT '>> Load Duration: ' + CAST(DATEDIFF(SECOND, @start_time, @end_time) AS NVARCHAR) + ' seconds';
         PRINT '>> -------------';
 
-        -- ======================================================
-        -- Columnstore Index Maintenance
-        -- ======================================================
-        PRINT '>> Optimizing Columnstore Index...';
+		PRINT '------------------------------------------------';
+		PRINT 'Loading ERP Tables';
+		PRINT '------------------------------------------------';
 
-        ALTER INDEX CCI_crm_sales_details
-        ON silver.crm_sales_details
-        REORGANIZE WITH (COMPRESS_ALL_ROW_GROUPS = ON);
-
-        PRINT '>> Columnstore Optimization Completed.';
+        -- Loading erp_loc_a101
+        SET @start_time = GETDATE();
+		PRINT '>> Truncating Table: silver.erp_loc_a101';
+		TRUNCATE TABLE silver.erp_loc_a101;
+		PRINT '>> Inserting Data Into: silver.erp_loc_a101';
+		INSERT INTO silver.erp_loc_a101 (
+			cid,
+			cntry
+		)
+		SELECT
+			REPLACE(cid, '-', '') AS cid, 
+			CASE
+				WHEN TRIM(cntry) = 'DE' THEN 'Germany'
+				WHEN TRIM(cntry) IN ('US', 'USA') THEN 'United States'
+				WHEN TRIM(cntry) = '' OR cntry IS NULL THEN 'n/a'
+				ELSE TRIM(cntry)
+			END AS cntry -- Normalize and Handle missing or blank country codes
+		FROM bronze.erp_loc_a101;
+	    SET @end_time = GETDATE();
+        PRINT '>> Load Duration: ' + CAST(DATEDIFF(SECOND, @start_time, @end_time) AS NVARCHAR) + ' seconds';
+        PRINT '>> -------------';
+		
+		-- Loading erp_px_cat_g1v2
+		SET @start_time = GETDATE();
+		PRINT '>> Truncating Table: silver.erp_px_cat_g1v2';
+		TRUNCATE TABLE silver.erp_px_cat_g1v2;
+		PRINT '>> Inserting Data Into: silver.erp_px_cat_g1v2';
+		INSERT INTO silver.erp_px_cat_g1v2 (
+			id,
+			cat,
+			subcat,
+			maintenance
+		)
+		SELECT
+			id,
+			cat,
+			subcat,
+			maintenance
+		FROM bronze.erp_px_cat_g1v2;
+		SET @end_time = GETDATE();
+		PRINT '>> Load Duration: ' + CAST(DATEDIFF(SECOND, @start_time, @end_time) AS NVARCHAR) + ' seconds';
         PRINT '>> -------------';
 
-        -- ======================================================
-        -- Loading ERP Tables (Metadata-Driven)
-        -- ======================================================
-        PRINT '------------------------------------------------';
-        PRINT 'Loading ERP Tables (Metadata-Driven)';
-        PRINT '------------------------------------------------';
-
-        DECLARE @metadata_rejected BIGINT = 0;
-
-        BEGIN TRANSACTION;
-            EXEC silver.load_metadata_driven
-                @batch_id = @batch_id,
-                @total_rejected = @metadata_rejected OUTPUT;
-        COMMIT TRANSACTION;
-
-        SET @total_rejected += @metadata_rejected;
-
-        -- ======================================================
-
-        SET @batch_end_time = GETDATE();
-
-        PRINT '==========================================';
-        PRINT 'Loading Silver Layer Completed';
-        PRINT '   - Total Load Duration: ' +
-              CAST(DATEDIFF(SECOND, @batch_start_time, @batch_end_time) AS NVARCHAR) +
-              ' seconds';
-        PRINT '==========================================';
-
-        -- Update execution log
-        EXEC audit.usp_execution_end
-            @execution_id  = @execution_id,
-            @rows_inserted = @total_inserted,
-            @rows_updated  = @total_updated,
-            @rows_rejected = @total_rejected,
-            @status        = 'SUCCESS';
-
-    END TRY
-    BEGIN CATCH
-
-        -- Roll back any active transaction
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-
-        -- Log failure
-        INSERT INTO audit.etl_log (
-            batch_id,
-            table_name,
-            start_time,
-            end_time,
-            status,
-            error_message
-        )
-        VALUES (
-            @batch_id,
-            'Full Silver Batch',
-            @batch_start_time,
-            GETDATE(),
-            'Failed',
-            ERROR_MESSAGE()
-        );
-
-        PRINT '==========================================';
-        PRINT 'ERROR OCCURRED DURING LOADING SILVER LAYER';
-        PRINT 'Error Message: ' + ERROR_MESSAGE();
-        PRINT '==========================================';
-
-        -- Update execution log
-        EXEC audit.usp_execution_end
-            @execution_id  = @execution_id,
-            @rows_inserted = @total_inserted,
-            @rows_updated  = @total_updated,
-            @rows_rejected = @total_rejected,
-            @status        = 'FAILED',
-            @error_message = 'Error ' + CAST(ERROR_NUMBER() AS NVARCHAR) + ': ' + ERROR_MESSAGE();
-
-    END CATCH
+		SET @batch_end_time = GETDATE();
+		PRINT '=========================================='
+		PRINT 'Loading Silver Layer is Completed';
+        PRINT '   - Total Load Duration: ' + CAST(DATEDIFF(SECOND, @batch_start_time, @batch_end_time) AS NVARCHAR) + ' seconds';
+		PRINT '=========================================='
+		
+	END TRY
+	BEGIN CATCH
+		PRINT '=========================================='
+		PRINT 'ERROR OCCURED DURING LOADING BRONZE LAYER'
+		PRINT 'Error Message' + ERROR_MESSAGE();
+		PRINT 'Error Message' + CAST (ERROR_NUMBER() AS NVARCHAR);
+		PRINT 'Error Message' + CAST (ERROR_STATE() AS NVARCHAR);
+		PRINT '=========================================='
+	END CATCH
 END
-GO
