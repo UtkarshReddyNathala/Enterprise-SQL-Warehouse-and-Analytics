@@ -1,16 +1,10 @@
 # Enterprise SQL Data Warehouse and Analytics Project
 
-### Metadata-Driven ETL | Medallion Architecture | Change Data Capture (CDC) | Slowly Changing Dimensions (SCD Type 1 & 2) | Data Quality Framework | Audit Logging | Star Schema
+An end-to-end SQL Server Data Warehouse and Analytics platform built using Medallion Architecture, ETL pipelines, Star Schema, and advanced SQL analytics.
 
----
+The project integrates data from ERP and CRM source systems, processes it through Bronze, Silver, and Gold layers, and transforms it into business-ready data for customer, product, and sales analysis.
 
-## Overview
-
-This project is an end-to-end **Data Warehouse solution** built using **Microsoft SQL Server**. Data is extracted from **CRM and ERP source systems (CSV extracts)**, processing **116K+ records across 6 source systems**, and transformed through a structured **Medallion architecture (Bronze → Silver → Gold)** using **Stored Procedures**.
-
-The solution implements a production-oriented **ETL framework** with **metadata-driven ingestion**, **incremental loading**, **Change Data Capture (CDC)**, **Slowly Changing Dimensions (SCD Type 1 & Type 2)**, **data quality validation**, and **comprehensive audit logging**. The curated data is modeled into a **Star Schema** to support **reporting, business intelligence, and analytical workloads**.
-
-To improve **maintainability and operational visibility**, the project includes **configurable ETL pipelines**, **execution logging**, **data quality monitoring**, **reject-record handling**, and **centralized audit tables** that enable **reliable and traceable data processing**.
+It also includes metadata-driven ETL, ETL monitoring, data quality testing, and SQL-based reporting to demonstrate an enterprise-style data engineering workflow.
 
 ---
 
