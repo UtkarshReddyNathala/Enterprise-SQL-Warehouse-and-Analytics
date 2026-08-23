@@ -183,7 +183,6 @@ The `init_load_all.sql` script is used to run the overall loading process.
 * Data Warehouse Design
 * Bronze, Silver and Gold Architecture
 * ETL Pipeline Development
-* Metadata-Driven Processing
 * Data Transformation
 * Star Schema
 * SQL Analytics
@@ -225,12 +224,6 @@ scripts/silver/ddl_silver.sql
 scripts/silver/proc_load_silver.sql
 ```
 
-The metadata-driven loading procedure is also available:
-
-```text
-scripts/silver/proc_load_metadata_driven.sql
-```
-
 ### 5. Load the Gold Layer
 
 Run:
@@ -262,20 +255,6 @@ scripts/monitoring/etl_monitoring_dashboard.sql
 
 **Utkarsh Reddy Nathala**
 
-GitHub:
-[https://github.com/UtkarshReddyNathala](https://github.com/UtkarshReddyNathala)
 
-Project Repository:
-[https://github.com/UtkarshReddyNathala/Enterprise-SQL-Warehouse-and-Analytics](https://github.com/UtkarshReddyNathala/Enterprise-SQL-Warehouse-and-Analytics)
 
----
-
-## 📄 License
-
-This project is available for educational and portfolio purposes.
-
-```
-
-**Important:** I have **not** added `datasets/`, `requirements.txt`, `data_catalog.md`, `naming-conventions.md`, or any other files that you said are not in your repository.
-```
 
